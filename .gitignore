@@ -1,0 +1,11 @@
+.claude/
+.gradle/
+build/
+out/
+.idea/
+*.iml
+.DS_Store
+PLAN.md
+notes/
+local.properties
+.kotlin/
