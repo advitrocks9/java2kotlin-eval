@@ -9,3 +9,7 @@ PLAN.md
 notes/
 local.properties
 .kotlin/
+# CI clones the target Java repo on the fly; don't vendor it.
+target/jcommander/
+generated/
+.cache/

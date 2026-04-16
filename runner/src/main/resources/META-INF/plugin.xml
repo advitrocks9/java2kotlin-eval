@@ -1,0 +1,14 @@
+<idea-plugin>
+    <id>j2k.headless.runner</id>
+    <name>j2k headless runner</name>
+    <vendor>advit-arora-jetbrains-submission</vendor>
+    <description>headless wrapper around IntelliJ's static j2k for the eval pipeline. invoked from CI as ./gradlew runIde --args="j2k input output".</description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.java</depends>
+    <depends>org.jetbrains.kotlin</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <appStarter implementation="j2k.runner.J2KStarter"/>
+    </extensions>
+</idea-plugin>
