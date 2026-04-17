@@ -3,6 +3,7 @@ package j2k.runner
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ApplicationStarter
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
@@ -66,10 +67,13 @@ class J2KStarter : ApplicationStarter {
 
             println("[j2k] converting ${psiFiles.size} files")
 
+            val module = ModuleManager.getInstance(project).modules.firstOrNull()
+                ?: error("project at $inDir has no modules - cannot run J2K without one")
+
             val converted = JavaToKotlinAction.Handler.convertFiles(
                 /* javaFiles = */ psiFiles,
                 /* project = */ project,
-                /* module = */ null,
+                /* module = */ module,
                 /* enableExternalCodeProcessing = */ false,
                 /* askExternalCodeProcessing = */ false,
                 /* forceUsingOldJ2k = */ false,
