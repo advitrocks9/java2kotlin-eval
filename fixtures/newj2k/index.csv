@@ -1,0 +1,15 @@
+nullability,nullability,FieldAssignedWithNull
+nullability,nullability,FieldInitializedWithNull
+anonymous_class,anonymousClass,localSelfReference
+object_literal,objectLiteral,AccessThisInsideAnonClass
+sam_lambda,functionalInterfaces,MyRunnable
+sam_lambda,functionalInterfaces,NoFunctionalInterfaceAnnotation
+varargs,varArg,ellipsisTypeSingleParams
+varargs,varArg,varargLengthAccess
+try_with_resources,tryWithResource,Simple
+try_with_resources,tryWithResource,MultipleResources
+enum_body,enum,constantsWithBody1
+static_members,staticMembers,StaticImport
+overload_default,overloads,Override
+variance,projections,projections
+field_init,field,nonConstInitializer
