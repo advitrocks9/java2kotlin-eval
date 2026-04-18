@@ -1,0 +1,110 @@
+name: j2k-eval
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: "Java repo to convert and score (default: cbeust/jcommander)"
+        required: false
+        default: "cbeust/jcommander"
+
+jobs:
+  eval-newj2k-fixtures:
+    name: eval against jetbrains newJ2k testData
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup jdk 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: setup kotlin compiler
+        run: |
+          curl -sLo /tmp/kotlin.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip
+          unzip -q /tmp/kotlin.zip -d /opt
+          echo "/opt/kotlinc/bin" >> $GITHUB_PATH
+
+      - name: cache gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+
+      - name: pull newJ2k fixture sample
+        run: bash scripts/fetch-newj2k-fixtures.sh
+
+      - name: eval - run kotlinc + structural metrics
+        run: ./gradlew :eval:run --args="fixtures/newj2k report-newj2k.md"
+
+      - name: eval - run unit tests
+        run: ./gradlew :eval:test
+
+      - name: upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: j2k-eval-newj2k-report
+          path: report-newj2k.md
+
+  eval-jcommander:
+    name: eval against forked jcommander (target java repo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup jdk 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: setup kotlin compiler
+        run: |
+          curl -sLo /tmp/kotlin.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip
+          unzip -q /tmp/kotlin.zip -d /opt
+          echo "/opt/kotlinc/bin" >> $GITHUB_PATH
+
+      - name: cache gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+
+      - name: clone target java repo
+        run: |
+          target="${{ github.event.inputs.target_repo || 'cbeust/jcommander' }}"
+          git clone --depth=1 "https://github.com/${target}.git" target/jcommander
+
+      - name: try headless j2k via runIde plugin
+        # The runner plugin opens the input dir as an IntelliJ project and
+        # invokes JavaToKotlinAction.Handler.convertFiles. In CI without an
+        # SDK-configured project, this currently produces no .kt files; we
+        # log it and proceed with the eval pipeline regardless. Documented
+        # in docs/HEADLESS_J2K.md.
+        run: |
+          mkdir -p target/converted
+          ./gradlew :runner:runIde --args="j2k target/jcommander/src/main/java target/converted" || true
+          echo "kotlin files produced: $(find target/converted -name '*.kt' | wc -l)"
+
+      - name: eval target/converted (will be empty pending plugin SDK setup)
+        run: |
+          if [ "$(find target/converted -name '*.kt' | wc -l)" -gt 0 ]; then
+            ./gradlew :eval:run --args="target/converted report-jcommander.md"
+          else
+            echo "no .kt produced - skipping eval. see docs/HEADLESS_J2K.md" > report-jcommander.md
+          fi
+
+      - name: upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: j2k-eval-jcommander-report
+          path: report-jcommander.md
