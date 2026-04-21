@@ -48,6 +48,9 @@ fun main(args: Array<String>) {
     val compileResults = ktFiles.map { compile.check(it) }
 
     val structural = ktFiles.map { Metrics.scan(it) }
+    val psiEnv = PsiEnv()
+    val psi = ktFiles.map { f -> PsiScan.scan(f, psiEnv.parse(f)) }
+    psiEnv.close()
 
     val expectations = parsed.expectations?.let { loadExpectations(it) } ?: emptyMap()
     val hypothesisResults: Map<String, HypothesisCheck> = ktFiles.mapNotNull { p ->
@@ -60,6 +63,7 @@ fun main(args: Array<String>) {
         ktDir = ktDir,
         compile = compileResults,
         structural = structural,
+        psi = psi,
         hypotheses = hypothesisResults,
     )
 

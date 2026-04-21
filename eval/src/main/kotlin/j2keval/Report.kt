@@ -8,6 +8,7 @@ object Report {
         ktDir: Path,
         compile: List<CompileResult>,
         structural: List<StructuralMetrics>,
+        psi: List<PsiMetrics> = emptyList(),
         hypotheses: Map<String, HypothesisCheck>,
     ): String = buildString {
         val total = compile.size
@@ -81,6 +82,50 @@ object Report {
         appendLine("| `vararg` params | ${totals[9]} |")
         appendLine("| `.use {}` resource blocks | ${totals[10]} |")
         appendLine()
+
+        if (psi.isNotEmpty()) {
+            // PSI numbers should match the regex numbers in most cases, but
+            // diverge where regex was wrong: object-literal expressions
+            // nested in larger structures, !! inside string templates, vals
+            // inside unusual scopes.
+            val psiTotals = IntArray(8)
+            for (m in psi) {
+                psiTotals[0] += m.notNullAsserts
+                psiTotals[1] += m.objectLiteralExprs
+                psiTotals[2] += m.funInterfaces
+                psiTotals[3] += m.constVals
+                psiTotals[4] += m.plainVals
+                psiTotals[5] += m.constEligibleVals
+                psiTotals[6] += m.innerClasses
+                psiTotals[7] += m.varargParams
+            }
+            appendLine("## Structural metrics (PSI -- KotlinCoreEnvironment)")
+            appendLine()
+            appendLine("| metric | regex | psi | delta |")
+            appendLine("|--------|-------|-----|-------|")
+            val regexAgg = structural.fold(IntArray(8)) { acc, m ->
+                acc[0] += m.notNullAsserts; acc[1] += m.anonymousObjects; acc[2] += m.funInterface
+                acc[3] += m.constVal; acc[4] += m.plainVal; acc[5] += m.constEligibleVal
+                acc[6] += m.innerClass; acc[7] += m.varargParams
+                acc
+            }
+            val labels = listOf(
+                "!! not-null asserts",
+                "object expression (anon class)",
+                "fun interface",
+                "const val",
+                "val (non-const)",
+                "const-eligible val",
+                "inner class",
+                "vararg",
+            )
+            for (i in labels.indices) {
+                val delta = psiTotals[i] - regexAgg[i]
+                val mark = if (delta == 0) "0" else if (delta > 0) "+$delta" else "$delta"
+                appendLine("| ${labels[i]} | ${regexAgg[i]} | ${psiTotals[i]} | $mark |")
+            }
+            appendLine()
+        }
 
         if (hypotheses.isNotEmpty()) {
             appendLine("## Hypothesis checks")

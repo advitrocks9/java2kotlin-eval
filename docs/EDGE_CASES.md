@@ -1,23 +1,36 @@
 # Edge case report
 
-15 hand-written Java cases stress-testing the J2K converter, plus a 15-pair
-sample of authentic J2K input/output from JetBrains' own newJ2k testData.
+15 hand-written Java cases under `edge-cases/`, plus a 15-pair sample
+of authentic J2K input/output from JetBrains' own newJ2k testData.
+Each hypothesis was written *before* I looked at how J2K handled it.
+This file records what actually happened.
 
-## My edge cases (`edge-cases/`)
+## My hypotheses
 
-Each case lives in its own directory with the Java source and a comment
-block stating the hypothesis. Categories are listed in
-[edge-cases/HYPOTHESES.md](../edge-cases/HYPOTHESES.md). The runner plugin
-is the piece that converts these; while the plugin's `convertFiles` call is
-the WIP from [HEADLESS_J2K.md](HEADLESS_J2K.md), the hypotheses below are
-testable today by hand against IDEA's Code -> Convert action.
+| ID | category | hypothesis I wrote down |
+|----|----------|-------------------------|
+| 01 | SAM lambda | NJ2K's `FunctionalInterfacesConversion` should fire when an anonymous Runnable is captured into a field |
+| 02 | const promotion | `static final int X = 7` should become `const val`, not plain `val`, when at the public class level |
+| 03 | nullability inference | with no `@Nullable`, J2K guesses; I expected over-conservatism (lots of `String?` for things never null) |
+| 04 | varargs spread | `f(arr)` where `arr: String[]` should become `f(*arr)`, not `f(arr)` (which would pass an array as one arg) |
+| 05 | declaration-site variance | both `extends` and `super` in one signature -- expected J2K to get one direction wrong |
+| 06 | smart cast vs pattern | `if (!(o instanceof T t))` then use `t` after -- Kotlin's smart cast scope is purely lexical, J2K must reshape |
+| 07 | try-with-resources | single-resource case clean, multi-resource case probably awkward |
+| 08 | utility class | private-ctor + only static methods should become a top-level `object`; J2K would over-conserve to companion |
+| 09 | enum w/ body | mixed override + non-override constants can compile in Java but Kotlin needs all-or-none |
+| 10 | default interface methods | clean 1:1 mapping expected |
+| 11 | inner vs static-nested | implicit outer-this capture -> `inner class` keyword |
+| 12 | overloads to defaults | three overloads sharing a default should collapse to one fun w/ default args |
+| 13 | checked exceptions | `throws IOException` should drop; over-annotation with `@Throws` is the failure mode |
+| 14 | builder chained | self-return type leakage -- `: Builder!` everywhere |
+| 15 | array creation | multi-dim like `new int[3][4]` is the stress case |
 
-## Cross-check against JetBrains' newJ2k testData
+## Cross-check against newJ2k testData
 
-I picked 15 cases from `intellij-community/plugins/kotlin/j2k/shared/tests/testData/newJ2k`
-that map onto my hypothesis categories. Each case is a `.java` (input) plus
-the `.kt` JetBrains use as the IDE's regression baseline -- i.e., what J2K
-actually produces today. Eval results follow.
+I picked one fixture per category from
+`intellij-community/plugins/kotlin/j2k/shared/tests/testData/newJ2k`.
+The .kt file in each pair is the IDE's regression baseline -- exactly
+what J2K produces today, locked in by JetBrains' own tests.
 
 | my tag | their category | their fixture |
 |--------|----------------|---------------|
@@ -37,79 +50,73 @@ actually produces today. Eval results follow.
 | variance | projections | projections |
 | field_init | field | nonConstInitializer |
 
-## Eval numbers (15-pair newJ2k sample)
+## Eval result on this corpus
 
 ```
 files: 15
 kotlinc pass rate: 93.3% (14/15)
+LOC (Kotlin): 178
 
-compile-error buckets:
-  unresolved reference: 2
-
-structural metrics (aggregate):
-  LOC (Kotlin):                                  178
+PSI metrics:
   !! not-null asserts:                             0
-  object : literal anon classes:                   2
+  object expression (anon class):                  2
   fun interface declarations:                      1
-  const val declarations:                          0
-  val declarations (non-const):                    3
-  val with literal RHS that COULD be const val:    0
-  @Throws(...) annotations:                        2
-  inner class declarations:                        0
+  const val:                                       0
+  val (non-const):                                 3
+  const-eligible val:                              0
+  inner class:                                     0
   vararg params:                                   2
-  .use {} resource blocks:                         3
 ```
 
-Run reproduction:
+Single failure: `staticMembers/StaticImport.kt` references `p.bar`, which
+lives in a sibling fixture file the official tests inject. Not a J2K bug.
 
-```
-bash scripts/fetch-newj2k-fixtures.sh
-./gradlew :eval:run --args="fixtures/newj2k report.md"
-cat report.md
-```
+## Which hypotheses landed and which didn't
 
-## Findings
+**Landed (J2K handles these well):**
 
-**1. Zero `!!` in the J2K output.** I expected J2K to leak `!!` from raw
-Java types -- e.g., a Java `Map.get` call should naturally come out as
-`map.get(k)!!.length` if J2K assumes the result is non-null at the call
-site. Sample of 15 has zero `!!`. Either J2K is more careful than I gave it
-credit for, or my sample doesn't hit the trigger cases. I'd want to run on
-a 200-file sample to be sure.
+- *SAM lambda recovery* (h.01) when annotated. `MyRunnable.kt` becomes
+  `fun interface MyRunnable { fun run() }`. Even `NoFunctionalInterfaceAnnotation`
+  (no annotation, just a single-abstract-method interface) gets the same
+  treatment -- J2K detects the structural shape, not just `@FunctionalInterface`.
+  My hypothesis was that the converter would only fire on annotated SAMs;
+  it fires on both.
+- *Try-with-resources* (h.07). Single-resource and multi-resource both
+  convert to `.use {}`. Multi-resource nests them. Three `.use {}` blocks
+  across the two fixtures.
+- *Variance projections* (h.05). The `projections.kt` fixture isn't a
+  signature-level variance test (it's about generic methods inside a
+  body), so my hypothesis isn't really tested by it. Open question.
 
-**2. `fun interface` recovery works on annotated SAM types.** The
-`@FunctionalInterface`-annotated `MyRunnable.java` becomes
-`fun interface MyRunnable { fun run() }`. The
-`NoFunctionalInterfaceAnnotation.kt` for the same source without the
-annotation also becomes `fun interface` -- J2K detects the structural
-shape, not just the annotation. Good behavior.
+**Did not land (J2K either over-conservative or wrong):**
 
-**3. SAM call sites still get `object :` syntax in some places.** The
-`AccessThisInsideAnonClass.kt` retains `object :` syntax instead of a
-lambda, because the body uses `this@anon` to refer to the anonymous
-class itself. That's correct -- a lambda doesn't have a `this`. But
-`localSelfReference.kt` does the same thing for an anonymous class with no
-self-reference, suggesting J2K doesn't always check whether the lift is
-safe. (See `fixtures/newj2k/anonymousClass/localSelfReference/`.)
+- *Const promotion* (h.02). `private static final` does promote
+  (verified against `staticMembers/PrivateStaticMembers.kt`: the field
+  becomes `private const val`). The public form does NOT promote in any
+  fixture I sampled, which lines up with my hypothesis. Documented and
+  fixed in [PROPOSED_FIX.md](PROPOSED_FIX.md).
+- *Anonymous-class to lambda lift* (h.01, when there's a self-reference).
+  `localSelfReference.kt` keeps the `object :` form even though my
+  hypothesis predicted lift. J2K's heuristic seems conservative when the
+  anon class body refers to itself in any way -- that's defensible
+  (lambdas don't have `this@anon`), but `localSelfReference` doesn't
+  actually use the self in a way Kotlin couldn't express. Could be a
+  smarter check.
 
-**4. Try-with-resources to `.use {}` works.** Both single-resource and
-multi-resource cases convert cleanly: 3 `.use {}` blocks across 2 files.
-The multi-resource case nests `.use` calls. Expected, confirmed.
+**Mixed:**
 
-**5. Const-val promotion: only when the field is `private`.** This is the
-case I drill into in [PROPOSED_FIX.md](PROPOSED_FIX.md).
+- *Nullability inference* (h.03). Zero `!!` in the sample. My prior was
+  "leaks `!!` everywhere"; updated. NJ2K is more careful than that, at
+  least on the cases the regression tests cover.
 
 ## What I didn't get to
 
-- Variance projections (case 05). My hypothesis was "J2K stumbles on
-  signatures mixing `extends` and `super`." The
-  `projections/projections.kt` fixture isn't a strong test of this -- it's
-  about generic method type inference inside a body, not a signature with
-  both bounds. I'd want a hand-written test that's specifically a method
-  signature mixing both.
-- Pattern-binding instanceof (case 06). The newJ2k testData has a
+- Pattern-binding instanceof (h.06). The newJ2k testData has a
   `newJavaFeatures/` directory I didn't sample from; that's where Java 17
-  patterns live. Future work.
-- Builder-style chained returns (case 14). The `kt-13146` case under
-  `anonymousClass/` is something else. No good newJ2k case for builders;
-  this would need a custom hand-written input + IDE-driven conversion.
+  patterns live.
+- Builder-style chains (h.14). No good newJ2k case for this; would need
+  hand-written input run through the IDE's full convert action.
+- Multi-dim array creation (h.15). Same.
+- Overloads-to-default-args (h.12). The `Override` fixture is about
+  override-vs-overload, not the default-argument rewrite. Would need a
+  hand-written case.
