@@ -1,99 +1,102 @@
 # java2kotlin-eval
 
-Eval pipeline for IntelliJ's static J2K converter. Two parts:
+End-to-end pipeline that runs IntelliJ's static Java→Kotlin converter
+against a Java source tree, then scores the resulting Kotlin with metrics
+written in Kotlin.
 
-1. `runner/` -- IntelliJ plugin, `ApplicationStarter` that drives
-   `JavaToKotlinAction.Handler.convertFiles` headlessly. Same shape Meta
-   describe in their [Kotlinator post](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/):
-   "an IntelliJ plugin that includes a class extending `ApplicationStarter` and
-   calling directly into the `JavaToKotlinConverter` class."
-2. `eval/` -- standalone Kotlin app. Per-file `kotlinc` check, structural
-   regex metrics, hypothesis check, markdown report. Eval logic is strictly
-   Kotlin, per the brief.
+Two pieces:
 
-The headline number: against a 15-pair sample of JetBrains' own newJ2k
-testData, **kotlinc accepts 14/15 (93%)** of the J2K outputs as-is. The one
-failure is `staticMembers/StaticImport.kt` referencing a sibling fixture
-(`p.Bar`) we don't ship -- not a J2K bug.
+- `runner/` — IntelliJ plugin. `ApplicationStarter` opens an in-memory
+  project, attaches a JDK + source root, and invokes
+  `NewJavaToKotlinConverter.elementsToKotlin` from a pooled thread under
+  a read action. This is the part Meta call out as hard in their
+  [Kotlinator post](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/).
+  How I got it working, and what didn't, is in
+  [docs/HEADLESS_J2K.md](docs/HEADLESS_J2K.md).
+- `eval/` — standalone Kotlin app. Per-file `kotlinc` compile check,
+  structural metrics from regex (cheap pass) and from PSI (real pass via
+  `kotlin-compiler-embeddable` + `KotlinCoreEnvironment`), markdown
+  report. Eval logic is strict-Kotlin per the brief; the runner is
+  IntelliJ-platform Kotlin.
 
-## What the pipeline does
-
-```
-target Java repo --> [runner plugin / IntelliJ headless] --> .kt files
-                                                                   |
-                                                                   v
-                                              [eval/] kotlinc + metrics + hypothesis
-                                                                   |
-                                                                   v
-                                                              report.md
-```
-
-The runner is the part Meta call out as hard. In tested IntelliJ 2024.3
-headless, my plugin loads, opens the input dir as a project, finds Java
-files via PSI, and calls `convertFiles`. The call returns empty because the
-opened project has no SDK-configured module, so type resolution bails.
-Documented in [docs/HEADLESS_J2K.md](docs/HEADLESS_J2K.md). Eval runs
-either way -- it's decoupled from the runner and operates on whatever .kt
-input you give it.
-
-## Run it locally
+## Run it
 
 ```
-brew install gradle openjdk@21      # gradle 9.5+, jdk 21
-brew install kotlin                  # kotlinc 2.0+
-./gradlew :eval:test                 # 7 unit tests for the const-val fix
+brew install gradle openjdk@21
+brew install kotlin
 
-# pull a 15-pair sample of authentic J2K output from intellij-community
-bash scripts/fetch-newj2k-fixtures.sh
-
-# score it
-./gradlew :eval:run --args="fixtures/newj2k report.md"
-cat report.md
-
-# apply the const-val post-processor in place
-./gradlew :eval:run --args="fix-const-val fixtures/synthetic"
-git diff fixtures/synthetic
+./gradlew :eval:test                          # unit tests
+bash scripts/fetch-newj2k-fixtures.sh         # 15-pair sample of authentic J2K
+                                              # input/output from intellij-community
+bash scripts/run-edge-cases.sh                # convert my own edge cases end-to-end
+                                              # (clones IntelliJ on first run, ~3 min)
+bash scripts/run-jcommander-eval.sh           # convert cbeust/jcommander
 ```
 
-## CI
+The end-to-end runs report to `reports/*.md`. CI in
+`.github/workflows/j2k-eval.yml` runs the same pipeline on push.
 
-`.github/workflows/j2k-eval.yml` runs both eval jobs on every push: one
-against the newJ2k fixture sample (the working corpus), one against a
-freshly cloned JCommander (the Java repo target). The JCommander leg
-clones, attempts the headless conversion via the runner plugin, and reports
-how many .kt files it produced.
+## What's actually in here
 
-## Headline numbers
+- 15 hand-written Java edge cases under `edge-cases/`, each tagged with
+  a hypothesis I wrote down before checking. See
+  [edge-cases/HYPOTHESES.md](edge-cases/HYPOTHESES.md) for the table and
+  [docs/EDGE_CASES.md](docs/EDGE_CASES.md) for what landed and what
+  didn't.
+- A 15-pair fixture sample pulled from JetBrains' own
+  `intellij-community/plugins/kotlin/j2k/shared/tests/testData/newJ2k`,
+  used as a cross-check (`scripts/fetch-newj2k-fixtures.sh`).
+- The actual JCommander conversion, run through the runner. 73 .java →
+  N .kt files, scored in `reports/jcommander-*.md`.
+- Five short case studies in [docs/CASE_STUDIES.md](docs/CASE_STUDIES.md)
+  picking out interesting things the converter does on the edge cases.
+- One Kotlin post-processor (`ConstValFix.kt`) that promotes
+  `val NAME = LITERAL` to `const val` for the case J2K misses (public
+  string constants). 7 unit tests on the scope rules. Demo in
+  [docs/PROPOSED_FIX.md](docs/PROPOSED_FIX.md).
 
-| corpus | files | kotlinc passes | structural metrics |
-|--------|-------|----------------|--------------------|
-| newJ2k 15-pair sample | 15 | 14 (93%) | 0 `!!`, 2 `object :` literal anon, 1 `fun interface`, 3 `.use {}`, 2 `vararg`, 2 `@Throws` |
+## Headline numbers (newJ2k 15-pair sample)
 
-The 0 `!!` count is the surprise. I expected J2K to leak `!!` from raw Java
-types; this sample has zero. The `object :` count is non-zero -- J2K still
-falls back to anonymous class expressions in places where a SAM lambda
-would do. The const-promotion miss is documented in
-[docs/PROPOSED_FIX.md](docs/PROPOSED_FIX.md): private static finals are
-promoted but the public ones aren't.
+```
+files: 15
+kotlinc pass rate: 14/15 (93.3%)
 
-## What I'd do next
+PSI metrics:
+  !! not-null asserts:                             0
+  object expression (anon class):                  2
+  fun interface declarations:                      1
+  const val:                                       0
+  val (non-const):                                 3
+  const-eligible val:                              0
+  inner class:                                     0
+  vararg params:                                   2
+```
 
-1. Fix the runner plugin so `convertFiles` actually produces output. The
-   path is to construct a synthetic `JavaSdkImpl` and add it as the project
-   SDK before opening the project, the way `LightProjectDescriptor` does in
-   IntelliJ's own test setup. I ran out of time on the SDK wiring.
-2. Replace the regex metrics with PSI traversal via
-   `kotlin-compiler-embeddable` once the runner is producing real output.
-   Regex is good enough for the metrics I report but won't generalize.
-3. Add a runtime correctness leg: convert JCommander, compile the .kt with
-   the original Java tests, run the suite, see how many pass. Compile rate
-   is necessary; correct-at-runtime is the bar.
-4. Open a discussion on the Kotlin issue tracker about `const`-promotion for
-   `public static final` literals. The current behavior is intentional
-   (binary compat across recompiles) but worth revisiting.
+Single failure: `staticMembers/StaticImport.kt` references `p.bar` from
+a sibling fixture file the official tests inject. Not a J2K bug.
 
-## Background reading
+## Background reading I leaned on
 
-- Meta, [Translating Java to Kotlin at Scale](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/) -- the architectural source for the ApplicationStarter pattern.
-- JetBrains, [intellij-community/plugins/kotlin/j2k](https://github.com/JetBrains/intellij-community/tree/master/plugins/kotlin/j2k) -- the converter, with `shared/tests/testData/newJ2k` as my fixture corpus.
-- Kotlin discuss thread, ["Extracting the new j2k transpiler from intellij-community"](https://discuss.kotlinlang.org/t/extracting-the-new-j2k-transpiler-from-the-intellij-community-project/22169) -- consensus is "you can't, J2K is tightly coupled to the IDE".
+- Meta, [*Translating Java to Kotlin at Scale*](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/) — the architectural source for the ApplicationStarter pattern and for what Kotlinator's post-processor pipeline actually does (preprocess → J2K → ~150 transforms → linters → build-fix).
+- JetBrains, [`intellij-community/plugins/kotlin/j2k`](https://github.com/JetBrains/intellij-community/tree/master/plugins/kotlin/j2k) — the converter source and its testData.
+- The Kotlin discuss thread on
+  [extracting J2K from intellij-community](https://discuss.kotlinlang.org/t/extracting-the-new-j2k-transpiler-from-the-intellij-community-project/22169)
+  ends with consensus that you can't, J2K is tightly coupled to the IDE.
+  This whole repo is one demonstration that you can, *if* you're willing
+  to ship the IDE alongside the plugin.
+
+## What I'd want to do next
+
+1. Use the JavaToKotlinAction.Handler post-processing pass instead of
+   `elementsToKotlin` directly — that would give me the IDE's full
+   cosmetic + rename-resolution passes. It needs a non-modal progress
+   indicator since `withModalProgress` deadlocks in headless. I haven't
+   tried.
+2. PSI-based eval right now only operates on the .kt output; pairing
+   each .kt with its source .java and walking both ASTs in parallel
+   would let me say "the Java had 12 try-with-resource blocks, J2K
+   produced 12 `.use {}` blocks, none missed." That's a more honest
+   recall metric than the count of `.use {}` on the Kotlin side alone.
+3. A runtime-correctness leg: convert JCommander, compile the .kt with
+   the original Java tests, run the suite, see how many pass. Compile
+   rate is necessary; correct-at-runtime is the real bar.
