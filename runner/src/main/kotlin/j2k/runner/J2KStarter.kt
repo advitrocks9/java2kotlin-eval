@@ -85,19 +85,23 @@ class J2KStarter : ApplicationStarter {
         // ApplicationStarter.main runs on EDT under a write-intent read
         // context in 2024.3, so we don't need to invokeAndWait around the
         // openProject / write actions -- doing so deadlocks on the EDT.
-        //
-        // ProjectManager.loadAndOpenProject is deprecated, but the modern
-        // ProjectManagerEx.openProject path needs OpenProjectTask {...}
-        // configured with the right flags AND something to point its
-        // VirtualFile resolution at -- I burned an hour on that and it kept
-        // hanging on the second open (lock contention, .port file leftover).
-        // The deprecated API works fine for a one-shot CLI invocation.
-        @Suppress("DEPRECATION")
-        val project: Project = ProjectManager.getInstance()
-            .loadAndOpenProject(workRoot.toString())
+        // ProjectManagerEx is the modern replacement for the deprecated
+        // ProjectManager.loadAndOpenProject (which silently returns the
+        // already-open project in headless and fails the second time).
+        val pmEx = ProjectManagerEx.getInstanceEx()
+        // forceOpenInNewFrame = false is critical in headless: setting it true
+        // makes openProject wait for a Swing frame that never gets attached.
+        // isNewProject = true skips the "load existing .idea/" path, which
+        // wants a workspace.xml that we don't ship.
+        val task = OpenProjectTask {
+            forceOpenInNewFrame = false
+            isNewProject = true
+            useDefaultProjectAsTemplate = false
+            runConfigurators = false
+        }
+        val project: Project = pmEx.openProject(workRoot, task)
             ?: error("could not open project at $workRoot")
         log("opened project: ${project.name}")
-        val pm = ProjectManager.getInstance()
 
         try {
             attachJdkAndSrcRoot(project, srcRoot)
@@ -106,7 +110,7 @@ class J2KStarter : ApplicationStarter {
             log("converter produced ${converted.size} files")
             mirrorOutputs(converted, srcRoot, outDir)
         } finally {
-            ProjectManagerEx.getInstanceEx().closeAndDispose(project)
+            pmEx.closeAndDispose(project)
         }
     }
 
@@ -202,9 +206,9 @@ class J2KStarter : ApplicationStarter {
         // API which throws ProhibitedAnalysisException if called from EDT.
         // Dispatch it to a pooled worker thread and block on the result.
         val converter = NewJavaToKotlinConverter(project, module, ConverterSettings.defaultSettings)
-        // J2K's NullityInferrer walks PSI -- needs a read action. The
-        // Analysis API refuses to run on EDT. Both happy on a pool thread
-        // wrapped in runReadAction.
+        // J2K's nullability inferrer walks PSI, which needs a read action.
+        // The Analysis API also refuses to run on EDT. Pool thread + read
+        // action is the combination that satisfies both.
         val result = ApplicationManager.getApplication()
             .executeOnPooledThread<org.jetbrains.kotlin.j2k.Result> {
                 ApplicationManager.getApplication().runReadAction<org.jetbrains.kotlin.j2k.Result> {
