@@ -6,14 +6,14 @@ written in Kotlin.
 
 Two pieces:
 
-- `runner/` — IntelliJ plugin. `ApplicationStarter` opens an in-memory
+- `runner/` -- IntelliJ plugin. `ApplicationStarter` opens an in-memory
   project, attaches a JDK + source root, and invokes
   `NewJavaToKotlinConverter.elementsToKotlin` from a pooled thread under
   a read action. This is the part Meta call out as hard in their
   [Kotlinator post](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/).
   How I got it working, and what didn't, is in
   [docs/HEADLESS_J2K.md](docs/HEADLESS_J2K.md).
-- `eval/` — standalone Kotlin app. Per-file `kotlinc` compile check,
+- `eval/` -- standalone Kotlin app. Per-file `kotlinc` compile check,
   structural metrics from regex (cheap pass) and from PSI (real pass via
   `kotlin-compiler-embeddable` + `KotlinCoreEnvironment`), markdown
   report. Eval logic is strict-Kotlin per the brief; the runner is
@@ -77,8 +77,8 @@ a sibling fixture file the official tests inject. Not a J2K bug.
 
 ## Background reading I leaned on
 
-- Meta, [*Translating Java to Kotlin at Scale*](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/) — the architectural source for the ApplicationStarter pattern and for what Kotlinator's post-processor pipeline actually does (preprocess → J2K → ~150 transforms → linters → build-fix).
-- JetBrains, [`intellij-community/plugins/kotlin/j2k`](https://github.com/JetBrains/intellij-community/tree/master/plugins/kotlin/j2k) — the converter source and its testData.
+- Meta, [*Translating Java to Kotlin at Scale*](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/) -- the architectural source for the ApplicationStarter pattern and for what Kotlinator's post-processor pipeline actually does (preprocess → J2K → ~150 transforms → linters → build-fix).
+- JetBrains, [`intellij-community/plugins/kotlin/j2k`](https://github.com/JetBrains/intellij-community/tree/master/plugins/kotlin/j2k) -- the converter source and its testData.
 - The Kotlin discuss thread on
   [extracting J2K from intellij-community](https://discuss.kotlinlang.org/t/extracting-the-new-j2k-transpiler-from-the-intellij-community-project/22169)
   ends with consensus that you can't, J2K is tightly coupled to the IDE.
@@ -88,7 +88,7 @@ a sibling fixture file the official tests inject. Not a J2K bug.
 ## What I'd want to do next
 
 1. Use the JavaToKotlinAction.Handler post-processing pass instead of
-   `elementsToKotlin` directly — that would give me the IDE's full
+   `elementsToKotlin` directly -- that would give me the IDE's full
    cosmetic + rename-resolution passes. It needs a non-modal progress
    indicator since `withModalProgress` deadlocks in headless. I haven't
    tried.

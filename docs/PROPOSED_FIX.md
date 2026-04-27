@@ -1,4 +1,4 @@
-# Proposed fix — `const val` promotion for public string constants
+# Proposed fix -- `const val` promotion for public string constants
 
 ## What I found
 
