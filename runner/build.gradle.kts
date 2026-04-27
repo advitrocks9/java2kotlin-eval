@@ -1,8 +1,15 @@
 // IntelliJ-Platform plugin -- ApplicationStarter that drives JavaToKotlinConverter.
 // Real headless J2K, the same pattern Meta describes in their Kotlinator post.
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "2.0.21"
-    id("org.jetbrains.intellij.platform") version "2.2.1"
+    id("org.jetbrains.kotlin.jvm")
+    id("org.jetbrains.intellij.platform")
+}
+
+repositories {
+    mavenCentral()
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
 
 dependencies {
@@ -10,6 +17,7 @@ dependencies {
         intellijIdeaCommunity("2024.3")
         bundledPlugin("org.jetbrains.kotlin")
         bundledPlugin("com.intellij.java")
+        instrumentationTools()
     }
 }
 
