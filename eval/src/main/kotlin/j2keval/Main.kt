@@ -46,7 +46,7 @@ fun main(args: Array<String>) {
     println("[eval] found ${ktFiles.size} .kt files")
 
     val compile = CompileChecker(System.getenv("KOTLINC") ?: "kotlinc")
-    val compileResults = ktFiles.map { compile.check(it) }
+    val compileResults = compile.checkAll(ktFiles, parsed.compileMode)
 
     val structural = ktFiles.map { Metrics.scan(it) }
     val psiEnv = PsiEnv()
@@ -82,28 +82,32 @@ fun main(args: Array<String>) {
     println("[eval] kotlinc pass rate: ${"%.1f".format(passRate * 100)}% (${compileResults.count { it.ok }}/${compileResults.size})")
 }
 
-private data class Args(val ktDir: Path, val report: Path?, val expectations: Path?)
+private data class Args(
+    val ktDir: Path,
+    val report: Path?,
+    val expectations: Path?,
+    val compileMode: CompileMode,
+)
 
 private fun parseArgs(args: List<String>): Args {
-    if (args.isEmpty()) {
-        System.err.println("usage: j2keval <kt-dir> [<report-out>] [--expectations=<json>]")
-        exitProcess(2)
-    }
+    val usage = "usage: j2keval <kt-dir> [<report-out>] [--expectations=<file>] [--isolated|--module]"
+    if (args.isEmpty()) { System.err.println(usage); exitProcess(2) }
+
     var report: Path? = null
     var expectations: Path? = null
+    var mode: CompileMode = CompileMode.MODULE
     val positional = mutableListOf<String>()
     for (a in args) {
         when {
             a.startsWith("--expectations=") -> expectations = Path.of(a.removePrefix("--expectations="))
-            a.startsWith("--") -> { System.err.println("unknown flag: $a"); exitProcess(2) }
+            a == "--isolated" -> mode = CompileMode.ISOLATED
+            a == "--module" -> mode = CompileMode.MODULE
+            a.startsWith("--") -> { System.err.println("unknown flag: $a\n$usage"); exitProcess(2) }
             else -> positional += a
         }
     }
-    if (positional.isEmpty()) {
-        System.err.println("usage: j2keval <kt-dir> [<report-out>] [--expectations=<json>]")
-        exitProcess(2)
-    }
+    if (positional.isEmpty()) { System.err.println(usage); exitProcess(2) }
     val ktDir = Path.of(positional[0])
     if (positional.size >= 2) report = Path.of(positional[1])
-    return Args(ktDir, report, expectations)
+    return Args(ktDir, report, expectations, mode)
 }
