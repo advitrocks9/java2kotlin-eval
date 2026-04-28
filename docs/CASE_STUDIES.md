@@ -1,12 +1,14 @@
 # Case studies -- five files J2K got interesting
 
-These are five files from the headless run where the converter's output
-told me something I didn't know going in. Each one has the original
-Java, the J2K output (after my marker-stripping pass), and a short note
-on what's going on.
+Five cases where the converter's output told me something I didn't know
+going in. Cases 1, 2, 3, 5 come from running the `runner/` plugin on the
+`edge-cases/` corpus (committed under `fixtures/edge-converted/`). Case
+4 is from `intellij-community`'s own newJ2k testData -- I include it
+because the SAM-recovery behaviour it shows isn't covered by my
+edge-case dataset.
 
-(Numbers below come from the run committed in
-`reports/edge-final.md`. To reproduce: `bash scripts/run-edge-cases.sh`.)
+To reproduce: `bash scripts/run-edge-cases.sh`. The eval report writes
+to `reports/edge-raw.md` and `reports/edge-fixed.md`.
 
 ## 1. The static utility class becomes `object`, not `class + companion`
 

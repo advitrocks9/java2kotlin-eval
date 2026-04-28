@@ -15,8 +15,13 @@ REPORT_FIXED="${ROOT}/reports/jcommander-fixed.md"
 
 mkdir -p "$(dirname "$REPORT_RAW")"
 
+# Pinned so the eval is reproducible. Bump when a newer JCommander would
+# materially change what J2K hits (Java 21 features, new annotations, etc).
+JCOMMANDER_COMMIT="e9599fed58fdf5251abb8ad08226e96ae951d302"
+
 if [ ! -d "$TARGET" ]; then
-    git clone --depth=1 https://github.com/cbeust/jcommander.git "$TARGET"
+    git clone https://github.com/cbeust/jcommander.git "$TARGET"
+    git -C "$TARGET" checkout "$JCOMMANDER_COMMIT"
 fi
 
 rm -rf "$CONVERTED"

@@ -13,11 +13,12 @@ import kotlin.system.exitProcess
  *     `val` -> `const val` candidates)
  *   - error bucket histogram
  *
- * If a sibling `expectations.json` exists, also runs the per-case hypothesis
- * regex checks and reports pass/fail by hypothesis.
+ * Optionally pass `--expectations=path/to/expectations.txt` to run the
+ * per-case hypothesis regex checks and report pass/fail by hypothesis.
+ * The format is one line per case: `relpath | tag | yes|no | regex | description`.
  *
  * Usage:
- *   ./gradlew :eval:run --args="<kt-dir> [<report-out>] [--expectations=<json>]"
+ *   ./gradlew :eval:run --args="<kt-dir> [<report-out>] [--expectations=<file>]"
  */
 fun main(args: Array<String>) {
     if (args.isNotEmpty() && args[0] == "fix-const-val") {
