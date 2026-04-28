@@ -20,6 +20,15 @@ import kotlin.system.exitProcess
  *   ./gradlew :eval:run --args="<kt-dir> [<report-out>] [--expectations=<json>]"
  */
 fun main(args: Array<String>) {
+    if (args.isNotEmpty() && args[0] == "fix-const-val") {
+        if (args.size < 2) {
+            System.err.println("usage: j2keval fix-const-val <kt-dir>")
+            exitProcess(2)
+        }
+        val n = runConstValFix(Path.of(args[1]))
+        exitProcess(if (n > 0) 0 else 0)
+    }
+
     val parsed = parseArgs(args.toList())
     val ktDir = parsed.ktDir
     if (!ktDir.toFile().exists()) {
