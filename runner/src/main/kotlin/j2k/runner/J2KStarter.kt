@@ -201,14 +201,13 @@ class J2KStarter : ApplicationStarter {
         // API which throws ProhibitedAnalysisException if called from EDT.
         // Dispatch it to a pooled worker thread and block on the result.
         val converter = NewJavaToKotlinConverter(project, module, ConverterSettings.defaultSettings)
-        // J2K's nullability inferrer walks PSI, which needs a read action.
-        // The Analysis API also refuses to run on EDT. Pool thread + read
-        // action is the combination that satisfies both.
+        // The Analysis API refuses to run on EDT, so we dispatch to a pool
+        // thread. The pool thread version of elementsToKotlin acquires its
+        // own read actions internally as needed (verified by the matching
+        // PSI walk in J2KNullityInferrer).
         val result = ApplicationManager.getApplication()
             .executeOnPooledThread<org.jetbrains.kotlin.j2k.Result> {
-                ApplicationManager.getApplication().runReadAction<org.jetbrains.kotlin.j2k.Result> {
-                    converter.elementsToKotlin(files)
-                }
+                converter.elementsToKotlin(files)
             }
             .get()
 
