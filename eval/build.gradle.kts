@@ -4,6 +4,9 @@ plugins {
 }
 
 dependencies {
+    // kotlin-compiler-embeddable bundles a self-contained PSI/AST. Used here
+    // for KtFile traversal -- regex was the placeholder; PSI is the real read.
+    implementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21")
     testImplementation(kotlin("test"))
 }
 

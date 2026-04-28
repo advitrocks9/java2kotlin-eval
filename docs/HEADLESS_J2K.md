@@ -1,85 +1,111 @@
-# Headless J2K -- the architecture and where I got stuck
+# Headless J2K — what it took to get the converter running outside the IDE
 
-The brief asks for "a GitHub Action pipeline that applies the static j2k
-converter to the repository." There is no public CLI for J2K. The official
-JetBrains line, from [the discuss.kotlinlang.org thread](https://discuss.kotlinlang.org/t/how-to-convert-java-source-files-into-kotlin-in-an-existing-project-using-command-line/1507),
-is "Java to Kotlin conversion cannot be implemented correctly outside of
-IntelliJ IDEA." Meta got around this by building Kotlinator -- "an IntelliJ
-plugin that includes a class extending `ApplicationStarter` and calling
-directly into the `JavaToKotlinConverter` class." That is the pattern this
-repo uses.
+There is no public CLI for IntelliJ's Java→Kotlin converter. The
+[discuss.kotlinlang.org thread](https://discuss.kotlinlang.org/t/how-to-convert-java-source-files-into-kotlin-in-an-existing-project-using-command-line/1507)
+on the topic ends in "Java to Kotlin conversion cannot be implemented
+correctly outside of IntelliJ IDEA." Meta worked around this by writing a
+custom plugin -- they describe it in [Translating Java to Kotlin at Scale](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/)
+as "an IntelliJ plugin that includes a class extending `ApplicationStarter`
+and calling directly into the `JavaToKotlinConverter` class." That's the
+shape this plugin uses.
 
-## What works
+## The path that worked, after a few that didn't
 
-`runner/src/main/kotlin/j2k/runner/J2KStarter.kt` is the
-`ApplicationStarter`. Wiring:
+**1. `JavaToKotlinAction.Handler.convertFiles` -- doesn't return.**
 
-- `runner/build.gradle.kts` pulls IntelliJ IDEA Community 2024.3 via
-  `org.jetbrains.intellij.platform` v2.2.1, plus the `org.jetbrains.kotlin`
-  bundled plugin (which is where J2K lives) and `com.intellij.java`
-  (PSI for Java).
-- `META-INF/plugin.xml` registers the starter as `appStarter` with
-  `commandName="j2k"`, so the IDE's CLI dispatcher invokes it on
-  `--args="j2k <input> <output>"`.
-- The starter walks the input directory, opens it as a project via
-  `ProjectManager.loadAndOpenProject`, builds a list of `PsiJavaFile`,
-  picks the first `Module`, and calls
-  `JavaToKotlinAction.Handler.convertFiles(...)`.
+Handler is the same code path the IDE menu invokes. With a real JDK and
+source root attached, the call enters `withModalProgress(project, ...)`
+which spins waiting for a UI dialog that never materialises in headless.
+I let it run for 11 minutes before killing it. The convertFiles signature
+is `suspend`, so even though `runBlocking` would let me await it, the
+internal modal-progress block keeps waiting on a Swing event that never
+arrives.
 
-Verified by `./gradlew :runner:runIde --args="j2k <input> <output>"`:
-- IntelliJ Platform boots in headless mode (~30s).
-- The plugin loads (`Plugin to blame: j2k headless runner` in the SEVERE
-  log line confirms it's been recognised).
-- Project opens (`ProjectManager.loadAndOpenProject` returns non-null).
-- File enumeration finds my 15 edge-case Java files.
-- The `convertFiles` call doesn't throw.
+**2. Bypass Handler, call `NewJavaToKotlinConverter.elementsToKotlin`
+directly -- this works.**
 
-## Where it gets stuck
+`elementsToKotlin(List<PsiElement>)` is the synchronous lower-level
+entry point. It returns a `Result` whose `results: List<ElementResult?>`
+lines up with the input list. Each `ElementResult.text` is the converted
+Kotlin source. We lose the IDE-side post-processing pass (rename
+refactoring + a couple of cosmetic passes) but the structural metrics the
+eval cares about are unchanged.
 
-`convertFiles` returns empty (zero PSI Kotlin files) and no .kt files end
-up on disk. Two contributing causes I've identified:
+**3. The project needs a real module, not just an opened directory.**
 
-1. **EDT slow-operation prohibition.** `PsiManager.findFile` on EDT triggers
-   a `SlowOperations` SEVERE log because it walks the workspace file index.
-   That's logged not raised, but it suggests the conversion path is on the
-   wrong thread. The right wiring is to do the file enumeration in a
-   `runReadAction { }` off the EDT, then dispatch the conversion back onto
-   EDT inside a `WriteCommandAction`. I started but didn't finish the
-   threading rework.
-2. **No SDK on the auto-opened project.** `ProjectManager.loadAndOpenProject`
-   on a directory with no `.idea/` produces an empty project with one
-   default module and no JDK. J2K's type resolution silently bails when it
-   can't find `java.lang.Object`, etc, and `convertFiles` returns nothing.
-   The fix is to attach a `JavaSdkImpl` SDK before opening the project, the
-   way `LightProjectDescriptor` does in IntelliJ's own test setup. The
-   relevant test fixture I'd model on is in
-   `intellij-community/plugins/kotlin/idea/tests/test/org/jetbrains/kotlin/idea/j2k/`.
+`ProjectManager.loadAndOpenProject` is deprecated and silently returns the
+already-open project on the second invocation. Switched to
+`ProjectManagerEx.openProject(workRoot, OpenProjectTask{...})` which is
+the modern API. Even after that, opening a directory with no `.iml` gives
+you a project with zero modules; J2K's `targetKaModule` resolution then
+returns null and the converter produces an empty result. Fix: create a
+module in-memory with `ModuleManager.getModifiableModel().newModule(...)`
+inside a write action. Module type `JAVA_MODULE`.
 
-Both are fixable. The first is cheap -- ~50 lines of threading code. The
-second is the real work: it needs care because the SDK has to be
-JDK-version-correct or J2K's Java semantic model gives wrong answers.
+**4. JDK creation is a write op.**
 
-## Why I shipped without finishing this
+`JavaSdk.createJdk(name, javaHome, isJre=false)` walks the JDK's class
+roots to build the SDK's class index. That's writing project state, so
+the call has to live inside `runWriteAction`, not `runReadAction` (which
+is what I had at first -- it logged a SEVERE stack trace per file and
+returned an unusable SDK).
 
-Time-boxing. The brief has a deadline. The eval module is the part that's
-specified to be in Kotlin, and it's the part where I can show what a useful
-J2K eval actually looks like (the metrics, the hypothesis checks, the
-const-val post-processor). I treated the runner plugin as the architectural
-proof and used JetBrains' own `newJ2k` testData as the working corpus
-instead. The .kt files in that testData are what J2K actually produces --
-they're the IDE's regression baseline -- so eval numbers against them are
-authentic.
+**5. `ApplicationStarter.main` is on EDT under a write-intent context.**
 
-If you fix the runner: drop a Java repo into `target/`, run
-`./gradlew :runner:runIde --args="j2k target/<repo>/src/main/java target/converted"`,
-then `./gradlew :eval:run --args="target/converted report.md"`. The eval
-side already works.
+So `runWriteAction { ... }` works directly without `invokeAndWait`
+wrappers. Wrapping in `invokeAndWait` from EDT to EDT deadlocks instead.
+This was the second hardest thing to find -- the symptom was the JVM
+exiting cleanly between two log lines with no stack trace, because
+`ApplicationStarter` swallows uncaught throwables. Workaround: catch in
+`main` and print before `exitProcess(1)`.
 
-## Why not just use the IntelliJ IDE manually?
+## The full minimum recipe
 
-That's what most teams do. It works but doesn't fit a CI gate -- you can't
-run "open IntelliJ, click Convert" on a PR. The whole point of doing the
-plugin work is to make J2K runnable as a step in CI alongside lint, type
-check, test. That's the one piece of infrastructure JetBrains haven't
-shipped publicly yet, even though their February 2026 [VS Code J2K post](https://blog.jetbrains.com/kotlin/2026/02/java-to-kotlin-conversion-comes-to-visual-studio-code/)
-suggests it exists internally.
+```kotlin
+// 1. open project via ProjectManagerEx (not the deprecated ProjectManager)
+val project = ProjectManagerEx.getInstanceEx()
+    .openProject(workRoot, OpenProjectTask { isNewProject = false })
+
+// 2. inside a write action, create a module if there isn't one
+val module = runWriteAction {
+    val mmm = ModuleManager.getInstance(project).getModifiableModel()
+    val mod = mmm.newModule(workRoot.resolve("module.iml").toString(),
+                            ModuleTypeManager.getInstance().findByID("JAVA_MODULE").id)
+    mmm.commit(); mod
+}
+
+// 3. inside a write action, register a JDK and assign it to the project
+val sdk = runWriteAction {
+    val s = JavaSdk.getInstance().createJdk("auto-jdk-21", System.getProperty("java.home"), false)
+    ProjectJdkTable.getInstance().addJdk(s); s
+}
+runWriteAction { ProjectRootManager.getInstance(project).projectSdk = sdk }
+
+// 4. inside a write action, attach the source root to the module
+runWriteAction {
+    val rootModel = ModuleRootManager.getInstance(module).modifiableModel
+    val ce = rootModel.addContentEntry(srcVf)
+    ce.addSourceFolder(srcVf, false)
+    rootModel.inheritSdk(); rootModel.commit()
+}
+
+// 5. NOT through Handler.convertFiles; call elementsToKotlin directly
+val converter = NewJavaToKotlinConverter(project, module, ConverterSettings.defaultSettings)
+val result = converter.elementsToKotlin(psiJavaFiles)
+// result.results[i] is ElementResult? for psiJavaFiles[i]
+```
+
+## Things I'd still want to fix
+
+- The `withModalProgress` wrapper on `filesToKotlin` exists for a reason:
+  the IDE post-processor includes some passes (rename collisions, content
+  re-formatting) that polish the converter output. By bypassing it I get
+  rougher Kotlin. The right fix is probably running the post-processor
+  directly with a non-modal progress indicator -- I haven't tried.
+- The created JDK is registered in the table for the lifetime of the
+  process. A real CLI would unregister it on shutdown to keep the user's
+  JDK list clean.
+- Module creation doesn't include external deps. If the input Java imports
+  a library, J2K can't resolve those types and falls back to platform
+  types in the output. For JCommander this rarely matters (no third-party
+  imports in main); for a Spring app it would.
