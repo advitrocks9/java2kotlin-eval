@@ -12,10 +12,13 @@ internal fun collectKotlinFiles(root: Path): List<Path> =
             .sorted()
     }
 
-internal fun loadExpectations(file: Path): Map<String, Expectation> {
+internal fun loadExpectations(file: Path): Map<String, List<Expectation>> {
     if (!Files.exists(file)) return emptyMap()
     // small hand-rolled parser: lines look like
     //   path | tag | should-match (yes|no) | regex | description
+    // multiple entries per file are allowed -- a single .kt can carry several
+    // independent hypotheses (e.g. const-int promotion AND string-const gap on
+    // the same constants file).
     return Files.readAllLines(file)
         .map { it.trim() }
         .filter { it.isNotEmpty() && !it.startsWith("#") }
@@ -29,5 +32,5 @@ internal fun loadExpectations(file: Path): Map<String, Expectation> {
                 shouldMatch = parts[2] == "yes",
             )
         }
-        .toMap()
+        .groupBy({ it.first }, { it.second })
 }
