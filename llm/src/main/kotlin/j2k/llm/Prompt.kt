@@ -1,15 +1,10 @@
 package j2k.llm
 
-/**
- * The translation prompt. Deliberately short. The eval pipeline scores
- * compile rate and structural metrics independently, so the prompt's job
- * is correctness and idiom preservation, not "make this look fancy".
- *
- * One thing worth noting: the prompt does NOT show the model the eval
- * rubric. That would bias the comparison. The eval should measure what
- * the LLM produces under a generic translation ask, not what it produces
- * when told what's being measured.
- */
+// kept short on purpose. the eval scores compile rate + structural metrics
+// separately, so the prompt only has to ask for correct idiomatic kotlin.
+// deliberately doesn't tell the model what the eval is checking -- that
+// would bias the comparison. measuring "what claude produces on a generic
+// translation ask" is the point.
 fun systemPrompt(): String = """
 You translate Java source files to idiomatic Kotlin. You output Kotlin source code only.
 

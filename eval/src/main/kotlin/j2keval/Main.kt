@@ -4,30 +4,19 @@ import java.nio.file.Path
 import kotlin.io.path.absolute
 import kotlin.system.exitProcess
 
-/**
- * eval entry point. given a directory of .kt files (J2K output), produces a
- * markdown report with:
- *   - per-file kotlinc result
- *   - aggregate compile rate
- *   - structural metrics (regex + PSI)
- *   - error bucket histogram
- *   - hypothesis pass/fail (if --expectations= given)
- *
- * Also emits a JSONL artifact (one JSON object per .kt file) when
- * --jsonl=<path> is set, or default-derived from the markdown report path.
- * The JSONL is the structured form of the report; downstream tooling
- * (multi-source benchmarking, RL dataset extraction) joins on
- * (corpus, source, file).
- *
- * --source=<name> tags the JSONL records (default "j2k"). Use this to
- * distinguish runs over different converters: "claude-sonnet-4-6", "gpt-5",
- * etc.
- *
- * Usage:
- *   ./gradlew :eval:run --args="<kt-dir> [<report-out>] \
- *       [--expectations=<file>] [--isolated|--module] \
- *       [--allow-compile-fails=<N>] [--source=<name>] [--jsonl=<path>]"
- */
+// eval entry point. takes a directory of .kt files, produces a markdown
+// report and a sibling .jsonl with: per-file kotlinc result, aggregate
+// compile rate, structural metrics (regex + PSI), error bucket histogram,
+// hypothesis pass/fail when --expectations= is set.
+//
+// --source=<name> tags the JSONL records so two runs on the same corpus
+// (j2k vs claude vs gpt-5 vs whatever) can be joined and compared. default
+// "j2k". --jsonl=<path> overrides the default sibling-of-report path.
+//
+// usage:
+//   ./gradlew :eval:run --args="<kt-dir> [<report-out>] \
+//       [--expectations=<file>] [--isolated|--module] \
+//       [--allow-compile-fails=<N>] [--source=<name>] [--jsonl=<path>]"
 fun main(args: Array<String>) {
     if (args.isNotEmpty() && args[0] == "fix-const-val") {
         if (args.size < 2) {

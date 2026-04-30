@@ -6,15 +6,11 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 
-/**
- * Tiny wrapper around the Anthropic Messages API. One endpoint, one method.
- * Hand-rolled JSON for the request body and a regex extractor for the
- * response text -- the dependency budget for this module is "java stdlib".
- *
- * The API key comes from `ANTHROPIC_API_KEY`. Fail fast with an actionable
- * message if it's missing -- a CI run that hits this code path is a bug
- * (CI scores committed fixtures, never calls the API).
- */
+// minimal client for the messages api. one endpoint, one method. no SDK
+// because pulling in a multi-MB lib for a single POST is silly.
+//
+// ANTHROPIC_API_KEY required. CI never hits this path -- if a CI run lands
+// here something is wrong with the workflow.
 class AnthropicClient(
     private val apiKey: String = System.getenv("ANTHROPIC_API_KEY")
         ?: error("ANTHROPIC_API_KEY not set. This module is local-only; CI evaluates committed fixtures."),
@@ -25,11 +21,9 @@ class AnthropicClient(
         .connectTimeout(Duration.ofSeconds(10))
         .build()
 
-    /**
-     * One-shot completion. Returns the model's first text content block.
-     * If the API errors, includes the response body in the thrown exception
-     * so a local run shows the cause instead of just a 4xx code.
-     */
+    // one-shot completion. on a 4xx/5xx, the response body lands in the
+    // exception text so a local run sees the actual error from anthropic
+    // instead of just the status code.
     fun complete(systemPrompt: String, userPrompt: String): String {
         val body = buildBody(systemPrompt, userPrompt)
         val req = HttpRequest.newBuilder()
@@ -57,19 +51,13 @@ class AnthropicClient(
         append("]}")
     }
 
-    /**
-     * Pull all `text` fields out of the response's content blocks and
-     * concatenate them. The Messages API response shape is:
-     *   {"content":[{"type":"text","text":"..."}, ...], ...}
-     * Long responses can split across multiple text blocks. We scan only
-     * inside the `content:[...]` array so unrelated `"text"` fields
-     * (none today, but future-proofing) can't pollute the output.
-     *
-     * No JSON dep -- the response shape is small and stable, the regex
-     * walk is quote-aware enough for the strings we hit. Surrogate-pair
-     * \\uHHHH escapes aren't combined into a single code point; non-BMP
-     * characters in Kotlin source are rare enough to defer.
-     */
+    // response shape: {"content":[{"type":"text","text":"..."}, ...], ...}
+    // long responses can split across multiple text blocks so concatenate
+    // them all. only scan inside content[] -- if a future field ever has a
+    // "text" key elsewhere we don't want it leaking in.
+    // no JSON dep, the shape is stable enough that the regex walk holds up.
+    // surrogate-pair \uHHHH not combined into a single code point; non-BMP
+    // in kotlin source is rare and i'll fix it if it ever bites.
     private fun extractText(body: String): String {
         val contentArray = extractContentArray(body)
             ?: error("no content array in Anthropic response: $body")
@@ -81,9 +69,10 @@ class AnthropicClient(
         return matches.joinToString(separator = "")
     }
 
-    /** Returns the substring between `"content":[` and its matching `]`,
-     *  quote-aware so brackets inside string literals don't break the
-     *  bracket-counting. Same shape as Compare.kt's pickArray. */
+    // pull out the substring between `"content":[` and its matching `]`.
+    // quote-aware so a `]` inside a string literal doesn't unbalance things.
+    // same idea as Compare.pickArray; both could share a helper but the
+    // duplication is small.
     private fun extractContentArray(body: String): String? {
         val keyIdx = body.indexOf("\"content\"").takeIf { it >= 0 } ?: return null
         val open = body.indexOf('[', keyIdx).takeIf { it >= 0 } ?: return null

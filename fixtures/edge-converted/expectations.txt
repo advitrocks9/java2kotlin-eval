@@ -1,38 +1,37 @@
-# Hypothesis checks for fixtures/edge-converted -- the four .kt files captured
-# from a local runner pass over hand-written Java in edge-cases/. Each line
-# encodes one falsifiable claim; the eval reads this file via --expectations=
-# and emits a "Hypothesis checks" table in the generated report. A failure
-# exits the eval with code 3 so CI sees regressions.
+# hypothesis checks for fixtures/edge-converted -- the four .kt files
+# captured from a local runner pass over hand-written java in edge-cases/.
+# each line is one falsifiable claim. eval reads this via --expectations=
+# and emits a "Hypothesis checks" table; a fail exits 3 so CI catches it.
 #
-# Format: relpath | tag | yes|no | regex | description
+# format: relpath | tag | yes|no | regex | description
 #   yes -> regex MUST match the file
 #   no  -> regex MUST be absent
-# Comments start with #. Multiple entries per file are allowed.
+# `#` for comments. multiple entries per file are fine.
 
-# h.01 anonymous Runnable assigned to a field. J2K keeps the anon-object form
-# rather than lifting to a SAM lambda. Defensible (the field type is Runnable,
-# not a lambda type), but worth pinning so we notice if behavior shifts.
+# h.01 anonymous Runnable as a field. j2k keeps it as `object : Runnable {...}`
+# rather than lifting to a SAM lambda. defensible (field type is Runnable, not
+# a lambda type) but worth pinning so we catch behavior changes.
 01_anonymous_runnable.kt | anon_object_kept | yes | object\s*:\s*Runnable | anon-object form preserved (no SAM lift) for fielded Runnable
 
-# h.02 const promotion. Numeric and boolean static finals DO promote.
-# Public String static finals do NOT (this is the gap ConstValFix.kt patches).
-# The string-not-promoted check is what makes the fix-then-re-eval delta
-# meaningful; without it, the ConstValFix story is just a regex count.
+# h.02 const promotion. numeric/boolean static finals promote, public string
+# static finals don't -- that's the gap ConstValFix.kt patches. the
+# string-not-promoted check is what makes the fix delta meaningful: without
+# it, ConstValFix is just a regex count nobody verified is real.
 02_static_final_constants.kt | const_int_promoted        | yes | const\s+val\s+RETRY_LIMIT                  | numeric static final promotes to const val
 02_static_final_constants.kt | const_long_promoted       | yes | const\s+val\s+TIMEOUT_MS                   | long static final promotes to const val
 02_static_final_constants.kt | const_bool_promoted       | yes | const\s+val\s+DEBUG                        | boolean static final promotes to const val
-02_static_final_constants.kt | string_const_NOT_promoted | yes | ^\s*val\s+BASE_PATH\s*:\s*String\s*=\s*"   | public String static final stays plain val (gap ConstValFix.kt patches)
+02_static_final_constants.kt | string_const_NOT_promoted | yes | ^\s*val\s+BASE_PATH\s*:\s*String\s*=\s*"   | public String static final stays plain val (the gap ConstValFix.kt patches)
 
-# h.07 try-with-resources collapses to .use {} blocks. We can't safely
-# regex "is the second .use INSIDE the first" without scope analysis (a
-# pure regex match crosses method boundaries between readOne and readTwo
-# in this fixture and gives a false positive). The nested-shape claim is
-# pinned on the newj2k/MultipleResources case instead, where the fixture
-# has a single method body and the regex can't fool itself.
+# h.07 try-with-resources -> .use {}. couldn't safely regex "is the second
+# .use INSIDE the first" without real scope analysis -- a pure regex match
+# in this fixture crosses the readOne/readTwo method boundary and gives a
+# false positive. the nested-shape claim is pinned on
+# newj2k/MultipleResources where the fixture has a single method body and
+# the regex can't fool itself.
 07_try_with_resources.kt | use_block | yes | \.use\s*\{ | try-with-resources -> .use {} (both readOne and readTwo)
 
-# h.08 utility class. Private-ctor + only-static-methods becomes a top-level
-# `object`, NOT a class with `companion object` wrapping the members. The
-# negative check is the load-bearing one; J2K could have produced either.
+# h.08 utility class. private-ctor + static-methods-only should become a
+# top-level `object`, NOT a class wrapping a companion. the negative check
+# is doing the real work here -- j2k could have produced either shape.
 08_static_utility_class.kt | top_level_object      | yes | ^object\s+Sample\s*\{ | private-ctor utility class becomes top-level object
 08_static_utility_class.kt | not_companion_wrapped | no  | companion\s+object    | members are NOT wrapped in a companion object

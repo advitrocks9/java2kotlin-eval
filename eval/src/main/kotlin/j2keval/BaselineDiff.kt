@@ -6,21 +6,16 @@ import com.github.difflib.patch.AbstractDelta
 import java.nio.file.Files
 import java.nio.file.Path
 
-/**
- * Compare a candidate .kt corpus against a reference baseline corpus. Pairs
- * by relative path. The motivation: the JetBrains testData under
- * `fixtures/newj2k/` is regression-locked output -- exactly what the
- * intellij-community J2K converter is verified to produce today. If a
- * separately-produced .kt corpus (LLM, future converter, my runner with the
- * IDE post-processing bypassed) lines up against the same Java input, a
- * line-level diff against the baseline is a much louder correctness signal
- * than counting !! occurrences.
- *
- * Normalization is intentional and modest: trim trailing whitespace, collapse
- * blank-line runs to one, drop a trailing newline. This is *not* a semantic
- * diff -- import order, identifier renames, formatting differences will
- * still surface as hunks. That's fine: a reviewer wants to see those.
- */
+// diff a candidate .kt corpus against a reference one, paired by relpath.
+// the point: counting !! and const val occurrences only tells you so much.
+// if a second source of kotlin (LLM, future converter, runner output minus
+// the IDE post-processing) translates the same java the JetBrains testData
+// covers, a line-level diff against that baseline is a much louder signal.
+//
+// normalization is light -- trim trailing whitespace, collapse blank-line
+// runs, drop trailing newlines. NOT a semantic diff. import order,
+// identifier renames, formatting differences will all still show up. fine
+// by me, that's what i'd want to see in a review.
 data class BaselineComparison(
     val file: String,             // relpath under candidate corpus
     val identical: Boolean,

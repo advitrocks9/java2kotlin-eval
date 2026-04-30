@@ -9,48 +9,38 @@ import com.github.javaparser.ast.expr.ObjectCreationExpr
 import com.github.javaparser.ast.stmt.TryStmt
 import java.nio.file.Path
 
-/**
- * Input-side metrics over the .java files J2K is converting. Pairs with
- * StructuralMetrics/PsiMetrics on the Kotlin side to give a recall signal:
- * "did J2K produce a Kotlin construct for every Java construct that
- * should have one?"
- *
- * Without an input-side pass, the eval can only measure what the converter
- * emitted, not what it dropped. That's the recall-metric bullet from the
- * README's "what I'd want to do next" list.
- *
- * JavaParser, no symbol solver. The metrics are syntactic on the Kotlin
- * side too -- adding semantic resolution here would inflate the dep tree
- * for no signal gain.
- */
+// counts the same syntactic categories on the .java side that
+// StructuralMetrics counts on the .kt side. ratio gives a recall signal
+// per category -- did j2k drop any try-with-resources, anonymous classes,
+// static finals, varargs, etc.
+//
+// without this pass the eval only sees what the converter emitted, not
+// what it failed to convert. plain JavaParser, no symbol solver -- the
+// kotlin side is syntactic too so resolving types here would just bloat
+// the dep tree for no signal gain.
 data class JavaMetrics(
     val file: Path,
     val locJava: Int,
-    /** True if JavaParser failed to parse the file. All count fields are
-     *  zero when this is true; without the flag, "scanner failed" looks
-     *  identical to "file had zero constructs" and silently skews recall. */
+    // true if JavaParser couldn't recover any tree at all. all counts are
+    // zero in that case; without the flag, "parse failed" looks like
+    // "no constructs" and silently skews recall.
     val parseFailed: Boolean,
-    val tryWithResourceCount: Int,        // statements, not resources
-    val resourceCount: Int,                // sum of resources across statements
+    val tryWithResourceCount: Int,        // statements, not individual resources
+    val resourceCount: Int,                // resources summed across all statements
     val anonymousClassExprs: Int,
     val staticFinalFields: Int,
-    val staticFinalLiteralFields: Int,    // RHS is a primitive/string literal
+    val staticFinalLiteralFields: Int,    // subset where the RHS is a literal
     val varargParameters: Int,
     val innerClassDecls: Int,             // non-static nested classes
-    val singleAbstractMethodInterfaces: Int,  // candidates for `fun interface`
+    val singleAbstractMethodInterfaces: Int,  // `fun interface` candidates
 )
 
 object JavaScan {
 
-    /**
-     * Permissive parser. The newj2k testData deliberately includes invalid
-     * Java (e.g. projections.java is missing a semicolon to test J2K's
-     * resilience against parse errors). We still want best-effort syntactic
-     * counts off whatever JavaParser CAN recover. The parser keeps a
-     * partial AST when individual nodes fail, so findAll() still returns
-     * useful numbers as long as the overall ParseResult has any result
-     * tree at all.
-     */
+    // BLEEDING_EDGE so the parser keeps a partial AST when individual nodes
+    // fail. newj2k/projections.java is missing a semicolon on purpose (j2k
+    // testData -- they verify the converter handles broken java). under the
+    // permissive config we still get usable counts off the rest of the file.
     private val parser = JavaParser(
         ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.BLEEDING_EDGE)
     )
@@ -65,10 +55,9 @@ object JavaScan {
         } else {
             text
         }
-        // parser.parse returns a ParseResult that may have a partial AST
-        // even when the source has syntax errors. Take it whenever it's
-        // present; only fall through to parse_failed=true if we can't
-        // recover any tree at all.
+        // ParseResult can carry a partial AST even when the source has syntax
+        // errors -- use it whenever it's present. only fall through to
+        // parseFailed=true if we get nothing back at all.
         val result = runCatching { parser.parse(wrapped) }.getOrNull()
         val cu = result?.result?.orElse(null) ?: run {
             System.err.println("[eval] JavaParser failed to parse $file; recall counts marked parse_failed=true")
@@ -79,10 +68,9 @@ object JavaScan {
                 varargParameters = 0, innerClassDecls = 0, singleAbstractMethodInterfaces = 0,
             )
         }
-        // result.isSuccessful is false when problems were reported; the AST
-        // is still usable but we surface the partial state in the JSONL so
-        // a reviewer can see "scan ran but on a damaged tree". For now we
-        // leave parseFailed=false in that case since findAll() still works.
+        // result.isSuccessful() can be false when problems were reported even
+        // though the partial tree is usable. leave parseFailed=false there;
+        // findAll() still returns useful numbers.
 
         val tryWithRes = cu.findAll(TryStmt::class.java).filter { it.resources.isNotEmpty() }
         val resCount = tryWithRes.sumOf { it.resources.size }
@@ -102,9 +90,8 @@ object JavaScan {
             .count { it.isVarArgs }
         val innerClasses = cu.findAll(ClassOrInterfaceDeclaration::class.java)
             .count { it.isInnerClass }
-        // Single-abstract-method interface: nominal `fun interface` candidate.
-        // Counts default methods as concrete (not abstract), matching the
-        // SAM definition.
+        // SAM = exactly one abstract method. default and static methods don't
+        // count as abstract, matching the standard SAM definition.
         val samInterfaces = cu.findAll(ClassOrInterfaceDeclaration::class.java)
             .filter { it.isInterface }
             .count { iface ->
@@ -127,17 +114,12 @@ object JavaScan {
         )
     }
 
-    /**
-     * Heuristic: detect newj2k fragment-style fixtures (method body or single
-     * declaration with no enclosing class/interface/enum). The newj2k testData
-     * has a few of these in `varArg/`, formatted as a `//method` comment plus
-     * a method declaration. They aren't valid Java compilation units so we
-     * wrap them.
-     */
+    // newj2k has a few fragment-style fixtures (a single method declaration,
+    // no enclosing class -- the varArg/* ones). they aren't valid CUs so
+    // we wrap them in a synthetic class before parsing.
     private fun looksLikeFragment(text: String): Boolean {
-        // Strip line comments and check whether the file ever opens a top-level
-        // class/interface/enum/record. Cheap regex; good enough for the fixture
-        // shapes we hit.
+        // strip line comments, then check for any top-level decl keyword.
+        // cheap regex, fine for the fixture shapes we actually hit.
         val noLineComments = text.replace(Regex("(?m)^\\s*//.*$"), "")
         return Regex("""\b(class|interface|enum|record)\s+\w""").containsMatchIn(noLineComments).not()
     }

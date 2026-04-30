@@ -5,26 +5,14 @@ import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
-/**
- * Walks a Java input directory, calls Claude on each .java file, writes the
- * Kotlin output to a mirrored relative path under outputDir. Skips files
- * that already exist in outputDir (idempotent re-run after a partial
- * failure -- API calls aren't free and a flaky retry shouldn't redo every
- * successful translation).
- *
- * The prompt is in `Prompt.kt`. Keep it tight; the model gets the whole
- * .java contents in the user message and is told to output Kotlin only.
- *
- * What this isn't: a benchmarking harness. There's no temperature sweep,
- * no multi-shot retry, no scoring loop. Translation only -- the eval
- * module scores the captured outputs after the fact.
- */
+// walks inputDir, sends each .java to complete(), drops the kotlin response
+// at the matching relpath under outputDir. skips files already there so a
+// re-run after one bad output doesn't re-pay the api call for the rest.
+// translation only -- no temperature sweep, no retry loop. the eval module
+// scores captured outputs after the fact.
 class Translator(
-    /**
-     * (system, user) -> assistant text. Function-injected so tests can stub
-     * without standing up an Anthropic client. Production wiring passes
-     * `AnthropicClient::complete`.
-     */
+    // (system, user) -> assistant text. injected so tests don't need a live
+    // client. main wires AnthropicClient::complete.
     private val complete: (String, String) -> String,
     private val onFile: (String) -> Unit = { },
 ) {
@@ -51,22 +39,13 @@ class Translator(
         }
     }
 
-    /**
-     * Recover Kotlin source from a model response that may have:
-     *   - markdown fences (```kotlin ... ```)
-     *   - a prose preamble before the fence ("Here is the translation:")
-     *   - both
-     *   - neither (clean Kotlin, the prompt's stated contract)
-     *
-     * Strategy: if a fence exists, return its contents. Otherwise scan for
-     * the first line that starts with a Kotlin top-level token (`package`,
-     * `import`, `class`, `object`, `interface`, `fun`, `enum`, an
-     * annotation, or a single-line comment) and drop everything before it.
-     * If nothing matches, return the trimmed input as-is and let kotlinc
-     * complain -- better to fail compile loudly than silently emit prose.
-     */
+    // models sometimes wrap output in ```kotlin fences or stick a "here's the
+    // translation:" preamble before the code despite the prompt saying not to.
+    // if there's a fence, take what's inside it. otherwise drop lines until
+    // one looks like kotlin (package / import / @ / class / fun / etc). if
+    // neither path triggers, return the input untouched and let kotlinc fail
+    // loudly -- better than silently writing prose to a .kt.
     private fun stripWrappers(s: String): String {
-        // 1. fence path: take what's inside the first ```...``` block.
         val fenceStart = Regex("```(?:kotlin)?\\s*\n", RegexOption.IGNORE_CASE).find(s)
         if (fenceStart != null) {
             val afterOpen = s.substring(fenceStart.range.last + 1)
@@ -75,7 +54,6 @@ class Translator(
                 return afterOpen.substring(0, close).trimEnd() + "\n"
             }
         }
-        // 2. prose-preamble path: skip lines until one looks like Kotlin code.
         val kotlinStart = Regex(
             "^(?:package |import |@|class |object |interface |fun |enum class |sealed |data class |abstract |open |internal |private |public |//|/\\*)"
         )

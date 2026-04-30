@@ -1,70 +1,63 @@
 # java2kotlin-eval
 
-Three-piece pipeline scoring Java→Kotlin translation, instrumented for
-multi-source comparison.
+three-piece pipeline around the Java->Kotlin problem. eval/ is the scorer,
+runner/ runs the static intellij J2K converter outside the IDE, llm/ runs
+the same translation task through Claude. one harness, two converters,
+same fixtures.
 
-`eval/` is a standalone Kotlin app that scores any directory of `.kt` files:
-- module-wide `kotlinc` compile (single invocation, errors blamed back to
-  per-file; `--isolated` per-file mode for fixture corpora that share
-  top-level names)
-- regex + PSI structural metrics (`!!`, `object :`, `fun interface`,
-  `const val`, `vararg`, `inner class`, `.use {}`)
-- JavaParser-side metrics on the paired `.java` input → recall ratio
-  (did the converter drop any try-with-resources / SAMs / static finals?)
-- executable hypothesis checks via `--expectations=<file>` (one regex
-  per claim, exits 3 on first violation so CI fails when documented
-  behavior drifts)
-- normalized line-level baseline diff via `--baseline-corpus=<path>`
-  (the candidate-vs-reference signal that complements compile rate
-  and structural counts)
-- one Kotlin post-processor (`ConstValFix.kt`) that catches the public
-  String const-promotion gap I found in static J2K
-- structured `.jsonl` artifact per run (`SCHEMA_VERSION = 1`,
-  `eval/src/main/kotlin/j2keval/Jsonl.kt`); `j2keval compare a.jsonl
-  b.jsonl` joins two runs on `(corpus, source, file)` and emits a
-  side-by-side report. The bones of multi-agent benchmarking, not just
-  a single-converter scorer.
+`eval/` is a standalone kotlin app. given a directory of .kt files it
+runs `kotlinc` over them (module mode by default, `--isolated` per-file
+for fixture corpora that redeclare top-level names), counts structural
+metrics by regex and again by PSI, and writes a markdown report plus a
+sibling `.jsonl` so a downstream script can join two runs on
+`(corpus, source, file)`. extras: hypothesis checks via
+`--expectations=<file>` (one regex per claim, exits 3 on a fail so CI
+catches drift), a normalized line-level diff against a reference corpus
+via `--baseline-corpus=<path>`, javaparser-side counts on the paired
+`.java` input for a recall ratio, one post-processor (`ConstValFix.kt`)
+that fixes the public-string const-promotion gap i found in static j2k,
+and a `j2keval compare` subcommand that side-by-sides two .jsonl runs.
 
-`runner/` is an IntelliJ plugin (`ApplicationStarter`) that opens an
-in-memory project, attaches a JDK + source root, and invokes
+`runner/` is an intellij plugin (an `ApplicationStarter`) that opens an
+in-memory project, attaches a JDK + source root, and calls
 `NewJavaToKotlinConverter.elementsToKotlin` from a pooled thread under a
-read action. Same architecture Meta describe in their [Kotlinator
+read action. same architectural shape Meta describe in their [Kotlinator
 post](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/).
-What it took to get the converter running outside the IDE, and the
-**known platform gap that keeps it from running in CI**, is in
+the gory details of getting it to run outside the IDE, plus the
+**platform gap that keeps it from running in CI**, are in
 [docs/HEADLESS_J2K.md](docs/HEADLESS_J2K.md).
 
-`llm/` is a Claude Sonnet 4.6 translator: same input/output contract as
-the runner (Java tree → Kotlin tree) but going through the Anthropic
-Messages API instead of the static converter. The capture lives at
-`fixtures/llm-claude-converted/` and is scored by the same eval. The
-point isn't to declare a winner; it's to show the eval handles two
-sources cleanly so it can absorb GPT-5, Gemini, a different prompt,
-or a future static J2K version without rewrite.
+`llm/` translates the same .java -> .kt contract via the Anthropic
+Messages API (Claude Sonnet 4.6 by default). captures land in
+`fixtures/llm-claude-converted/` and the same eval scores them. point
+isn't to crown a winner -- it's that the eval doesn't care which
+converter produced the .kt, so a third or fourth source (gpt-5, gemini,
+a different prompt) plugs in via `--source=<name>` without rewriting
+anything.
 
-## Honest scope
+## honest scope
 
-CI runs the eval pipeline against committed corpora. The runner plugin
-is **not** exercised in CI; the LLM call is **not** invoked in CI.
-- `runIde` under xvfb on `ubuntu-latest` hangs in IntelliJ Platform's
-  `preloadNonHeadlessServices` before my `ApplicationStarter`
-  dispatches; same hang shape on macOS once the sandbox warms up. I
-  haven't isolated which non-headless service is the culprit and didn't
-  have time to dive deeper into IntelliJ Platform internals.
-  `scripts/run-edge-cases.sh` and `scripts/run-jcommander-eval.sh`
-  wipe `runner/build/idea-sandbox` before each run as a workaround.
-- The LLM call costs money + needs a key. Local-only by design;
-  `scripts/run-llm-eval.sh` is the entry point. CI evaluates the
-  committed `fixtures/llm-claude-converted/*.kt` captures and never
-  hits Anthropic.
-- I did not get to runtime-correctness measurement (compile the
-  converted Kotlin against the source's original test suite). The
-  README in this section already pointed at JCommander as the obvious
-  candidate; my time budget didn't reach it. Compile rate +
-  structural-recall is necessary but not sufficient -- "did the test
-  suite still pass" is the real bar and remains unfilled.
+CI runs the eval pipeline against committed corpora. the runner plugin
+is **not** exercised in CI; the llm call is **not** invoked in CI either.
 
-## Headline numbers
+- `runIde` under xvfb on ubuntu-latest hangs in IntelliJ Platform's
+  `preloadNonHeadlessServices` before my `ApplicationStarter` dispatches.
+  same hang shape on macos once the sandbox warms up. i didn't isolate
+  which service is the culprit; ran out of time before going deeper into
+  platform internals. `scripts/run-edge-cases.sh` and
+  `scripts/run-jcommander-eval.sh` wipe `runner/build/idea-sandbox`
+  before each run as a workaround.
+- the llm call costs money and needs an api key. local-only by design --
+  `scripts/run-llm-eval.sh` is the entry point. CI scores the committed
+  `fixtures/llm-claude-converted/*.kt` captures and never hits anthropic.
+- i didn't get to runtime-correctness measurement (compile the converted
+  kotlin against the source's own test suite). compile rate + structural
+  recall are necessary but not sufficient -- "do the original tests
+  still pass" is the actual bar and it's unfilled. JCommander was the
+  obvious candidate (testng harness, single-module, mostly self-
+  contained); ran out of clock.
+
+## headline numbers
 
 `reports/edge-converted.jsonl` (static J2K via runner, locally captured;
 4 of 15 cases before the platform hang re-fired):
@@ -104,24 +97,21 @@ single compile failure: staticMembers/StaticImport.kt -- references p.bar
 from a sibling fixture the official tests inject; not a J2K bug
 ```
 
-The recall metric is the most concrete piece of new evidence: 2 Java
-single-abstract-method interfaces in the corpus, only 1 became a
-Kotlin `fun interface`. That's the `@FunctionalInterface`-required
-gap, surfaced at the corpus aggregate -- previously documented as
-prose in `docs/EDGE_CASES.md` and now an executable check.
+recall metric on newj2k: 2 java SAM interfaces in the corpus, 1 fun
+interface in the kotlin output. that's the @FunctionalInterface-required
+gap, which i had documented as prose in `docs/EDGE_CASES.md` and is now
+an executable check that catches it at the aggregate.
 
-The headline behavioral diff between static J2K and Sonnet 4.6 (from
-`reports/llm-claude.md` baseline-diff section): on
-`02_static_final_constants.kt` Claude promoted both `BASE_PATH`
-(public String) AND `COMPUTED` (`1 + 2` expression) to `const val`.
-Static J2K skips both; my `ConstValFix.kt` post-processor patches the
-String case but not the computed-expression case. The LLM beats both
-upstream and patched J2K on this fixture. Worth noting because it's
-also the smallest possible argument for the role: a static converter
-with a hand-written post-processor for every case, vs. an LLM that
-gets the case right unprompted.
+biggest behavioral diff between static j2k and Sonnet 4.6 shows up in
+`02_static_final_constants.kt`. Claude promotes both `BASE_PATH` (public
+string) and `COMPUTED` (which has `1 + 2` on the rhs) to `const val`.
+static j2k skips both, and my `ConstValFix.kt` only patches the string
+case. so the LLM beats both upstream and post-processed j2k on this
+particular fixture. small data point but worth flagging -- maintaining
+a static converter means writing a hand-rolled fix for every case like
+this; the llm got the same case right with no special handling.
 
-## Run it
+## run it
 
 ```
 brew install gradle openjdk@21
@@ -161,31 +151,31 @@ To re-translate via Claude (costs ~$0.15 in API tokens):
 ANTHROPIC_API_KEY=sk-... bash scripts/run-llm-eval.sh
 ```
 
-**Privacy note:** that script POSTs the full contents of every `.java`
-under `edge-cases/` to `api.anthropic.com`. The committed `edge-cases/`
-corpus is hand-written sample code; running on it is fine. Do not point
-it at proprietary or licensed source unless your Anthropic data handling
+**privacy note:** the script POSTs the full contents of every .java
+under `edge-cases/` to api.anthropic.com. the committed `edge-cases/`
+corpus is hand-written sample code so running on it is fine. don't
+point it at proprietary or licensed source unless your anthropic data
 agreement covers that traffic.
 
-## Repo layout
+## repo layout
 
-- `eval/` -- scoring app + post-processor + JSONL schema + compare.
-- `runner/` -- the static J2K runner plugin (`ApplicationStarter`).
-- `llm/` -- Claude Sonnet 4.6 translator. Local-only.
-- `edge-cases/` -- 15 hand-written Java cases, each tagged with a
-  hypothesis I wrote down before running it through any converter.
-  See [`HYPOTHESES.md`](edge-cases/HYPOTHESES.md) for the table and
+- `eval/` -- scoring app, post-processor, JSONL schema, compare.
+- `runner/` -- static J2K runner plugin (the `ApplicationStarter`).
+- `llm/` -- Claude Sonnet 4.6 translator. local-only.
+- `edge-cases/` -- 15 hand-written java cases, each tagged with a
+  hypothesis i wrote down before running it through any converter.
+  see [`HYPOTHESES.md`](edge-cases/HYPOTHESES.md) for the table and
   [`docs/EDGE_CASES.md`](docs/EDGE_CASES.md) for what landed.
-- `fixtures/newj2k/` -- 15-pair sample from pinned intellij-community.
-  Cross-check corpus.
-- `fixtures/edge-converted/` -- 4 captured `.kt` outputs from a local
-  static-J2K runner pass.
-- `fixtures/llm-claude-converted/` -- 15 captured `.kt` outputs from
-  Claude Sonnet 4.6 over the same edge-cases inputs.
-- `docs/CASE_STUDIES.md` -- five before/after pairs annotating
-  interesting J2K behaviour.
+- `fixtures/newj2k/` -- 15-pair sample fetched from a pinned
+  intellij-community commit. cross-check corpus.
+- `fixtures/edge-converted/` -- 4 .kt outputs captured locally from
+  the static-j2k runner.
+- `fixtures/llm-claude-converted/` -- 15 .kt outputs from Claude
+  Sonnet 4.6 over the same edge-cases inputs.
+- `docs/CASE_STUDIES.md` -- five before/after pairs of j2k behaviour
+  i found interesting.
 
-## Background reading I leaned on
+## background reading i leaned on
 
 - Meta, [*Translating Java to Kotlin at
   Scale*](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/)
@@ -203,23 +193,20 @@ agreement covers that traffic.
   IDE alongside the plugin -- and an honest record of where that
   premise still cracks.
 
-## What I'd want to do next
+## what i'd want to do next
 
-1. Runtime-correctness leg on JCommander: convert, compile the `.kt`
-   against the original TestNG suite, count pass rate. Compile rate +
-   structural recall are necessary; tests-still-pass is the actual
-   bar. The pipeline can score this run with no changes (the eval
-   reads any `.kt` directory); JCommander's TestNG harness is the
-   piece I didn't have time to wire up.
-2. Add a second model leg (GPT-5 via the Codex CLI rotator already on
-   my machine, or Gemini). The `--source=<name>` flag and JSONL
-   schema are designed for this; the `compare` subcommand already
-   joins two sources. The bottleneck is API cost per benchmark run,
-   not pipeline shape.
-3. Find the specific service behind the
-   `preloadNonHeadlessServices` hang. The tail of the cancelled-CI
-   `idea.log` (committed under [`docs/headless-j2k-cancel-tail.txt`](docs/headless-j2k-cancel-tail.txt))
-   shows `LazyInstanceHolder.initialize` →
+1. runtime-correctness on jcommander. convert, compile the .kt against
+   the original testng suite, count tests-still-pass. compile rate +
+   recall are necessary, tests-pass is the actual bar. eval reads any
+   .kt dir so this is mostly testng harness wiring, which is what i
+   didn't have time for.
+2. second model leg -- gpt-5 via the codex cli rotator i already use
+   on my machine, or gemini. `--source=<name>` and the JSONL schema
+   are already designed for this and `compare` joins two sources, so
+   the only real cost is the api spend per benchmark run.
+3. bisect which service the `preloadNonHeadlessServices` hang is
+   waiting on. the tail of the cancelled-CI `idea.log` (committed at
+   [`docs/headless-j2k-cancel-tail.txt`](docs/headless-j2k-cancel-tail.txt))
+   shows `LazyInstanceHolder.initialize` ->
    `ApplicationLoader.preloadNonHeadlessServices` as the deadlock
-   site. Bisecting which service is the culprit is the obvious next
-   move; it would unblock the runner-in-CI path entirely.
+   site. unblocking that frees the runner-in-CI path.
