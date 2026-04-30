@@ -9,16 +9,24 @@ import kotlin.system.exitProcess
  * markdown report with:
  *   - per-file kotlinc result
  *   - aggregate compile rate
- *   - structural metrics (platform-type !! count, anonymous-object count,
- *     `val` -> `const val` candidates)
+ *   - structural metrics (regex + PSI)
  *   - error bucket histogram
+ *   - hypothesis pass/fail (if --expectations= given)
  *
- * Optionally pass `--expectations=path/to/expectations.txt` to run the
- * per-case hypothesis regex checks and report pass/fail by hypothesis.
- * The format is one line per case: `relpath | tag | yes|no | regex | description`.
+ * Also emits a JSONL artifact (one JSON object per .kt file) when
+ * --jsonl=<path> is set, or default-derived from the markdown report path.
+ * The JSONL is the structured form of the report; downstream tooling
+ * (multi-source benchmarking, RL dataset extraction) joins on
+ * (corpus, source, file).
+ *
+ * --source=<name> tags the JSONL records (default "j2k"). Use this to
+ * distinguish runs over different converters: "claude-sonnet-4-6", "gpt-5",
+ * etc.
  *
  * Usage:
- *   ./gradlew :eval:run --args="<kt-dir> [<report-out>] [--expectations=<file>]"
+ *   ./gradlew :eval:run --args="<kt-dir> [<report-out>] \
+ *       [--expectations=<file>] [--isolated|--module] \
+ *       [--allow-compile-fails=<N>] [--source=<name>] [--jsonl=<path>]"
  */
 fun main(args: Array<String>) {
     if (args.isNotEmpty() && args[0] == "fix-const-val") {
@@ -78,6 +86,25 @@ fun main(args: Array<String>) {
         println(report)
     }
 
+    val jsonlPath = parsed.jsonl ?: outFile?.let {
+        Path.of(it.toString().removeSuffix(".md") + ".jsonl")
+    }
+    if (jsonlPath != null) {
+        val samples = buildSamples(
+            ktDir = ktDir,
+            ktFiles = ktFiles,
+            corpus = ktDir.toString(),
+            source = parsed.source,
+            compile = compileResults,
+            structural = structural,
+            psi = psi,
+            hypotheses = hypothesisResults,
+            expectations = expectations,
+        )
+        Jsonl.write(jsonlPath, samples)
+        println("[eval] wrote ${samples.size} JSONL records to $jsonlPath")
+    }
+
     val passed = compileResults.count { it.ok }
     val failed = compileResults.size - passed
     val passRate = passed.toDouble() / compileResults.size
@@ -102,16 +129,20 @@ private data class Args(
     val expectations: Path?,
     val compileMode: CompileMode,
     val allowCompileFails: Int,
+    val source: String,
+    val jsonl: Path?,
 )
 
 private fun parseArgs(args: List<String>): Args {
-    val usage = "usage: j2keval <kt-dir> [<report-out>] [--expectations=<file>] [--isolated|--module] [--allow-compile-fails=<N>]"
+    val usage = "usage: j2keval <kt-dir> [<report-out>] [--expectations=<file>] [--isolated|--module] [--allow-compile-fails=<N>] [--source=<name>] [--jsonl=<path>]"
     if (args.isEmpty()) { System.err.println(usage); exitProcess(2) }
 
     var report: Path? = null
     var expectations: Path? = null
     var mode: CompileMode = CompileMode.MODULE
     var allowCompileFails = 0
+    var source = "j2k"
+    var jsonl: Path? = null
     val positional = mutableListOf<String>()
     for (a in args) {
         when {
@@ -121,6 +152,8 @@ private fun parseArgs(args: List<String>): Args {
             a.startsWith("--allow-compile-fails=") ->
                 allowCompileFails = a.removePrefix("--allow-compile-fails=").toIntOrNull()
                     ?: run { System.err.println("invalid int in $a"); exitProcess(2) }
+            a.startsWith("--source=") -> source = a.removePrefix("--source=")
+            a.startsWith("--jsonl=") -> jsonl = Path.of(a.removePrefix("--jsonl="))
             a.startsWith("--") -> { System.err.println("unknown flag: $a\n$usage"); exitProcess(2) }
             else -> positional += a
         }
@@ -128,5 +161,76 @@ private fun parseArgs(args: List<String>): Args {
     if (positional.isEmpty()) { System.err.println(usage); exitProcess(2) }
     val ktDir = Path.of(positional[0])
     if (positional.size >= 2) report = Path.of(positional[1])
-    return Args(ktDir, report, expectations, mode, allowCompileFails)
+    return Args(ktDir, report, expectations, mode, allowCompileFails, source, jsonl)
+}
+
+private fun buildSamples(
+    ktDir: Path,
+    ktFiles: List<Path>,
+    corpus: String,
+    source: String,
+    compile: List<CompileResult>,
+    structural: List<StructuralMetrics>,
+    psi: List<PsiMetrics>,
+    hypotheses: List<Pair<String, HypothesisCheck>>,
+    expectations: Map<String, List<Expectation>>,
+): List<SampleResult> {
+    val byPath = ktFiles.associateWith { ktDir.relativize(it).toString() }
+    val compileByPath = compile.associateBy { it.file }
+    val structByPath = structural.associateBy { it.file }
+    val psiByPath = psi.associateBy { it.file }
+    val hypothesesByKey = hypotheses.groupBy({ it.first }, { it.second })
+
+    return ktFiles.map { f ->
+        val key = byPath.getValue(f)
+        val cr = compileByPath.getValue(f)
+        val sm = structByPath.getValue(f)
+        val pm = psiByPath[f]
+        val hs = hypothesesByKey[key].orEmpty()
+        val expects = expectations[key].orEmpty()
+        val javaSibling = ktDir.resolve(key.removeSuffix(".kt") + ".java")
+        SampleResult(
+            corpus = corpus,
+            source = source,
+            file = key,
+            javaInput = if (javaSibling.toFile().exists()) ktDir.relativize(javaSibling).toString() else null,
+            compile = CompileBlock(cr.ok, cr.errors, cr.durationMs),
+            metricsRegex = MetricsRegexBlock(
+                loc = sm.locKotlin,
+                notNullAsserts = sm.notNullAsserts,
+                anonObjects = sm.anonymousObjects,
+                funInterface = sm.funInterface,
+                constVal = sm.constVal,
+                plainVal = sm.plainVal,
+                constEligibleVal = sm.constEligibleVal,
+                throwsAnnotations = sm.javaThrowsAnnotations,
+                innerClass = sm.innerClass,
+                vararg_ = sm.varargParams,
+                useBlocks = sm.useBlocks,
+            ),
+            metricsPsi = pm?.let {
+                MetricsPsiBlock(
+                    loc = it.locKotlin,
+                    notNullAsserts = it.notNullAsserts,
+                    objectLiteralExprs = it.objectLiteralExprs,
+                    funInterfaces = it.funInterfaces,
+                    constVals = it.constVals,
+                    plainVals = it.plainVals,
+                    constEligibleVals = it.constEligibleVals,
+                    innerClasses = it.innerClasses,
+                    varargParams = it.varargParams,
+                )
+            },
+            hypotheses = hs.zip(expects) { check, exp ->
+                HypothesisBlock(
+                    tag = check.tag,
+                    passed = check.passed,
+                    shouldMatch = exp.shouldMatch,
+                    pattern = exp.pattern,
+                    expectation = check.expectation,
+                    sample = check.actualSnippet,
+                )
+            },
+        )
+    }
 }
