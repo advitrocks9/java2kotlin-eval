@@ -51,6 +51,7 @@ echo "[run-llm-eval] staged $(ls "$STAGE" | wc -l | tr -d ' ') .java files"
 echo "[run-llm-eval] translation done; running eval"
 (cd "$ROOT" && ./gradlew :eval:run --args="fixtures/llm-claude-converted reports/llm-claude.md \
     --source=$MODEL \
-    --baseline-corpus=fixtures/edge-converted")
+    --baseline-corpus=fixtures/edge-converted \
+    --expectations=fixtures/llm-claude-converted/expectations.txt")
 
 echo "[run-llm-eval] report at reports/llm-claude.md"
