@@ -68,12 +68,21 @@ fun main(args: Array<String>) {
         expected.map { e -> key to Metrics.checkHypothesis(p, e) }
     }
 
+    val baselineComparisons: List<BaselineComparison> = parsed.baselineCorpus?.let { baseRoot ->
+        if (!baseRoot.toFile().exists()) {
+            System.err.println("[eval] baseline corpus not found: $baseRoot")
+            exitProcess(2)
+        }
+        BaselineDiff.compareCorpus(ktDir, baseRoot)
+    }.orEmpty()
+
     val report = Report.render(
         ktDir = ktDir,
         compile = compileResults,
         structural = structural,
         psi = psi,
         hypotheses = hypothesisResults,
+        baselineComparisons = baselineComparisons,
     )
 
     val outFile = parsed.report
@@ -100,6 +109,7 @@ fun main(args: Array<String>) {
             psi = psi,
             hypotheses = hypothesisResults,
             expectations = expectations,
+            baselineComparisons = baselineComparisons,
         )
         Jsonl.write(jsonlPath, samples)
         println("[eval] wrote ${samples.size} JSONL records to $jsonlPath")
@@ -131,10 +141,11 @@ private data class Args(
     val allowCompileFails: Int,
     val source: String,
     val jsonl: Path?,
+    val baselineCorpus: Path?,
 )
 
 private fun parseArgs(args: List<String>): Args {
-    val usage = "usage: j2keval <kt-dir> [<report-out>] [--expectations=<file>] [--isolated|--module] [--allow-compile-fails=<N>] [--source=<name>] [--jsonl=<path>]"
+    val usage = "usage: j2keval <kt-dir> [<report-out>] [--expectations=<file>] [--isolated|--module] [--allow-compile-fails=<N>] [--source=<name>] [--jsonl=<path>] [--baseline-corpus=<path>]"
     if (args.isEmpty()) { System.err.println(usage); exitProcess(2) }
 
     var report: Path? = null
@@ -143,6 +154,7 @@ private fun parseArgs(args: List<String>): Args {
     var allowCompileFails = 0
     var source = "j2k"
     var jsonl: Path? = null
+    var baselineCorpus: Path? = null
     val positional = mutableListOf<String>()
     for (a in args) {
         when {
@@ -154,6 +166,7 @@ private fun parseArgs(args: List<String>): Args {
                     ?: run { System.err.println("invalid int in $a"); exitProcess(2) }
             a.startsWith("--source=") -> source = a.removePrefix("--source=")
             a.startsWith("--jsonl=") -> jsonl = Path.of(a.removePrefix("--jsonl="))
+            a.startsWith("--baseline-corpus=") -> baselineCorpus = Path.of(a.removePrefix("--baseline-corpus="))
             a.startsWith("--") -> { System.err.println("unknown flag: $a\n$usage"); exitProcess(2) }
             else -> positional += a
         }
@@ -161,7 +174,7 @@ private fun parseArgs(args: List<String>): Args {
     if (positional.isEmpty()) { System.err.println(usage); exitProcess(2) }
     val ktDir = Path.of(positional[0])
     if (positional.size >= 2) report = Path.of(positional[1])
-    return Args(ktDir, report, expectations, mode, allowCompileFails, source, jsonl)
+    return Args(ktDir, report, expectations, mode, allowCompileFails, source, jsonl, baselineCorpus)
 }
 
 private fun buildSamples(
@@ -174,7 +187,9 @@ private fun buildSamples(
     psi: List<PsiMetrics>,
     hypotheses: List<Pair<String, HypothesisCheck>>,
     expectations: Map<String, List<Expectation>>,
+    baselineComparisons: List<BaselineComparison>,
 ): List<SampleResult> {
+    val baselineByFile = baselineComparisons.associateBy { it.file }
     val byPath = ktFiles.associateWith { ktDir.relativize(it).toString() }
     val compileByPath = compile.associateBy { it.file }
     val structByPath = structural.associateBy { it.file }
@@ -229,6 +244,14 @@ private fun buildSamples(
                     pattern = exp.pattern,
                     expectation = check.expectation,
                     sample = check.actualSnippet,
+                )
+            },
+            baseline = baselineByFile[key]?.let {
+                BaselineBlock(
+                    identical = it.identical,
+                    deltaCount = it.deltaCount,
+                    baselineMissing = it.baselineMissing,
+                    unifiedDiff = it.unifiedDiff,
                 )
             },
         )
