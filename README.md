@@ -46,8 +46,11 @@ The end-to-end runs report to `reports/*.md`. CI in
 - A 15-pair fixture sample pulled from JetBrains' own
   `intellij-community/plugins/kotlin/j2k/shared/tests/testData/newJ2k`,
   used as a cross-check (`scripts/fetch-newj2k-fixtures.sh`).
-- The actual JCommander conversion, run through the runner. 73 .java →
-  N .kt files, scored in `reports/jcommander-*.md`.
+- The runner wired up to convert `cbeust/jcommander` (73 .java files in
+  `src/main/java`) via `scripts/run-jcommander-eval.sh`. The committed
+  reports under `reports/` are produced by CI on Linux; on macOS the
+  IDE-platform sandbox has been flaky for me and I haven't isolated why
+  -- see `docs/HEADLESS_J2K.md`.
 - Five short case studies in [docs/CASE_STUDIES.md](docs/CASE_STUDIES.md)
   picking out interesting things the converter does on the edge cases.
 - One Kotlin post-processor (`ConstValFix.kt`) that promotes

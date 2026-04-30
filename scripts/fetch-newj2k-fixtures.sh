@@ -6,9 +6,11 @@
 set -euo pipefail
 
 REPO="JetBrains/intellij-community"
-BRANCH="master"
+# Pinned to keep the fixture corpus reproducible. Bump when new newJ2k cases
+# would be useful; don't drift on master.
+COMMIT="de434ea74fbec7b4a2183bdd66ae19e96e5db39a"
 BASE="plugins/kotlin/j2k/shared/tests/testData/newJ2k"
-RAW="https://raw.githubusercontent.com/${REPO}/${BRANCH}/${BASE}"
+RAW="https://raw.githubusercontent.com/${REPO}/${COMMIT}/${BASE}"
 
 DEST="$(cd "$(dirname "$0")/.." && pwd)/fixtures/newj2k"
 mkdir -p "$DEST"
@@ -41,7 +43,7 @@ for entry in "${PAIRS[@]}"; do
   # we prefer the plain .kt as the canonical baseline
   for ext in java kt; do
     url="${RAW}/${category}/${name}.${ext}"
-    if rtk proxy curl -fsSL "$url" -o "$out/${name}.${ext}"; then
+    if curl -fsSL "$url" -o "$out/${name}.${ext}"; then
       :
     else
       echo "miss: $url" >&2
