@@ -79,15 +79,19 @@ object ConstValFix {
             // on a line lives in the scope present at line start.
             result += stack.last()
 
+            // `companion object` and top-level `object` are both PROMOTABLE
+            // -- both compile `const val`. Regular `class` / `interface` /
+            // `enum class` are not.
             val opensCompanion = Regex("""\bcompanion\s+object\b[^{]*\{""").containsMatchIn(line)
-            val opensClass = !opensCompanion && Regex("""\b(class|object|interface|enum\s+class)\b[^{]*\{""").containsMatchIn(line)
+            val opensObject = !opensCompanion && Regex("""(^|\s)object\s+\w+[^{]*\{""").containsMatchIn(line)
+            val opensClass = !opensCompanion && !opensObject && Regex("""\b(class|interface|enum\s+class)\b[^{]*\{""").containsMatchIn(line)
             val opensFun = Regex("""\bfun\b[^{]*\{""").containsMatchIn(line)
             val opensInit = Regex("""\binit\s*\{""").containsMatchIn(line)
             // count net brace delta on the line
             val opens = line.count { it == '{' }
             val closes = line.count { it == '}' }
 
-            if (opensCompanion) {
+            if (opensCompanion || opensObject) {
                 stack.addLast(ScopeKind.PROMOTABLE)
             } else if (opensClass || opensFun || opensInit) {
                 stack.addLast(ScopeKind.NOT_PROMOTABLE)
