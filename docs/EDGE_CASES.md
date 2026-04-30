@@ -59,9 +59,18 @@ generated report. A failing check exits the eval with code 3, so CI catches
 regressions in J2K behavior we depended on.
 
 ```
-fixtures/edge-converted/expectations.txt   -- 8 checks across 4 files
-fixtures/newj2k/expectations.txt           -- 11 checks across 10 files
+fixtures/edge-converted/expectations.txt        -- 8 checks across 4 files (static J2K via runner)
+fixtures/newj2k/expectations.txt                -- 11 checks across 10 files (JetBrains testData)
+fixtures/llm-claude-converted/expectations.txt  -- 12 checks across 6 files (Claude Sonnet 4.6)
 ```
+
+The Claude expectations are deliberately distinct from the static-J2K
+ones: the two converters disagree on several cases (anon-object lift,
+companion-vs-top-level for utility classes, const-eligibility of
+String + computed-expression literals). Encoding both lets the eval
+catch drift on either side independently. The
+`reports/llm-claude.md` "Baseline diff" section shows the
+side-by-side hunks.
 
 The two corpora carry independent expectation files because their .kt
 contents come from different J2K invocations (committed runner output vs.
