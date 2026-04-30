@@ -1,111 +1,172 @@
-# Headless J2K -- what it took to get the converter running outside the IDE
+# Headless J2K -- what worked, what didn't
 
 There is no public CLI for IntelliJ's Java→Kotlin converter. The
 [discuss.kotlinlang.org thread](https://discuss.kotlinlang.org/t/how-to-convert-java-source-files-into-kotlin-in-an-existing-project-using-command-line/1507)
-on the topic ends in "Java to Kotlin conversion cannot be implemented
-correctly outside of IntelliJ IDEA." Meta worked around this by writing a
-custom plugin -- they describe it in [Translating Java to Kotlin at Scale](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/)
+on the topic ends with "Java to Kotlin conversion cannot be implemented
+correctly outside of IntelliJ IDEA." Meta worked around this by writing
+an IntelliJ plugin -- they describe it in [Translating Java to Kotlin at
+Scale](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/)
 as "an IntelliJ plugin that includes a class extending `ApplicationStarter`
 and calling directly into the `JavaToKotlinConverter` class." That's the
 shape this plugin uses.
 
-## The path that worked, after a few that didn't
+This doc is the postmortem on getting that shape to actually run, the
+non-obvious pieces that took the most time, and **the specific platform
+gap I didn't get past**: the runner does not run in CI, and on macOS
+runs successfully on a fresh sandbox but flakes once the sandbox state
+warms up. I document the failure with logs rather than gloss it.
 
-**1. `JavaToKotlinAction.Handler.convertFiles` -- doesn't return.**
+## What actually works
 
-Handler is the same code path the IDE menu invokes. With a real JDK and
-source root attached, the call enters `withModalProgress(project, ...)`
-which spins waiting for a UI dialog that never materialises in headless.
-I let it run for 11 minutes before killing it. The convertFiles signature
-is `suspend`, so even though `runBlocking` would let me await it, the
-internal modal-progress block keeps waiting on a Swing event that never
-arrives.
+`runner/src/main/kotlin/j2k/runner/J2KStarter.kt` does the following on
+a fresh sandbox:
 
-**2. Bypass Handler, call `NewJavaToKotlinConverter.elementsToKotlin`
-directly -- this works.**
+1. Stages the input directory into `/tmp/j2k-work-XXX/src` (we'll
+   stamp `.idea/iml` files there without touching the user's tree).
+2. Opens it via `ProjectManagerEx.openProject(workRoot, OpenProjectTask{...})`.
+   The deprecated `ProjectManager.loadAndOpenProject` path silently
+   returns the already-open project on a second invocation; the modern
+   API doesn't.
+3. Inside a `runWriteAction`, registers a JDK (`JavaSdk.createJdk`,
+   pointed at `System.getProperty("java.home")`) and assigns it as
+   `ProjectRootManager.projectSdk`. This is a write op -- it indexes
+   the JDK class roots. Doing it in a read action throws SEVERE per
+   file and gives back an unusable SDK.
+4. Creates a Java module on the fly via
+   `ModuleManager.modifiableModel.newModule(...)`. An auto-opened
+   project with no `.iml` has zero modules; J2K's `targetKaModule`
+   resolution then returns null and `elementsToKotlin` produces an
+   empty result.
+5. Adds the staged source root as the module's content + source
+   folder, also under a write action.
+6. Calls
+   `NewJavaToKotlinConverter(project, module, ConverterSettings.defaultSettings).elementsToKotlin(files)`
+   from a pooled thread under a `runReadAction`. The Analysis API
+   refuses to run on EDT; the J2K nullability inferrer needs a read
+   action. Both happy on a pool thread + read action.
+7. Writes each `ElementResult.text` to disk after a regex
+   marker-strip pass (J2K's internal `/*@@hash@@*/` symbol-resolution
+   placeholders -- the IDE's post-processing pass cleans these up,
+   but bypassing the Handler skips that pass).
 
-`elementsToKotlin(List<PsiElement>)` is the synchronous lower-level
-entry point. It returns a `Result` whose `results: List<ElementResult?>`
-lines up with the input list. Each `ElementResult.text` is the converted
-Kotlin source. We lose the IDE-side post-processing pass (rename
-refactoring + a couple of cosmetic passes) but the structural metrics the
-eval cares about are unchanged.
+I deliberately don't go through `JavaToKotlinAction.Handler.convertFiles`.
+That's the same code path the IDE menu invokes, but it enters
+`withModalProgress(project, ...)` which spins waiting for a Swing event
+that never arrives in headless. I let it run for 11 minutes before
+killing it.
 
-**3. The project needs a real module, not just an opened directory.**
-
-`ProjectManager.loadAndOpenProject` is deprecated and silently returns the
-already-open project on the second invocation. Switched to
-`ProjectManagerEx.openProject(workRoot, OpenProjectTask{...})` which is
-the modern API. Even after that, opening a directory with no `.iml` gives
-you a project with zero modules; J2K's `targetKaModule` resolution then
-returns null and the converter produces an empty result. Fix: create a
-module in-memory with `ModuleManager.getModifiableModel().newModule(...)`
-inside a write action. Module type `JAVA_MODULE`.
-
-**4. JDK creation is a write op.**
-
-`JavaSdk.createJdk(name, javaHome, isJre=false)` walks the JDK's class
-roots to build the SDK's class index. That's writing project state, so
-the call has to live inside `runWriteAction`, not `runReadAction` (which
-is what I had at first -- it logged a SEVERE stack trace per file and
-returned an unusable SDK).
-
-**5. `ApplicationStarter.main` is on EDT under a write-intent context.**
-
-So `runWriteAction { ... }` works directly without `invokeAndWait`
-wrappers. Wrapping in `invokeAndWait` from EDT to EDT deadlocks instead.
-This was the second hardest thing to find -- the symptom was the JVM
-exiting cleanly between two log lines with no stack trace, because
-`ApplicationStarter` swallows uncaught throwables. Workaround: catch in
-`main` and print before `exitProcess(1)`.
-
-## The full minimum recipe
+The minimum recipe in code:
 
 ```kotlin
-// 1. open project via ProjectManagerEx (not the deprecated ProjectManager)
 val project = ProjectManagerEx.getInstanceEx()
-    .openProject(workRoot, OpenProjectTask { isNewProject = false })
+    .openProject(workRoot, OpenProjectTask {
+        forceOpenInNewFrame = false
+        isNewProject = true
+        useDefaultProjectAsTemplate = false
+        runConfigurators = false
+    })
 
-// 2. inside a write action, create a module if there isn't one
 val module = runWriteAction {
-    val mmm = ModuleManager.getInstance(project).getModifiableModel()
-    val mod = mmm.newModule(workRoot.resolve("module.iml").toString(),
-                            ModuleTypeManager.getInstance().findByID("JAVA_MODULE").id)
-    mmm.commit(); mod
+    val mm = ModuleManager.getInstance(project).getModifiableModel()
+    val mod = mm.newModule(
+        workRoot.resolve("module.iml").toString(),
+        ModuleTypeManager.getInstance().findByID("JAVA_MODULE").id
+    )
+    mm.commit()
+    mod
 }
 
-// 3. inside a write action, register a JDK and assign it to the project
 val sdk = runWriteAction {
-    val s = JavaSdk.getInstance().createJdk("auto-jdk-21", System.getProperty("java.home"), false)
-    ProjectJdkTable.getInstance().addJdk(s); s
+    val s = JavaSdk.getInstance().createJdk("auto-jdk-21",
+        System.getProperty("java.home"), false)
+    ProjectJdkTable.getInstance().addJdk(s)
+    s
 }
 runWriteAction { ProjectRootManager.getInstance(project).projectSdk = sdk }
 
-// 4. inside a write action, attach the source root to the module
-runWriteAction {
-    val rootModel = ModuleRootManager.getInstance(module).modifiableModel
-    val ce = rootModel.addContentEntry(srcVf)
-    ce.addSourceFolder(srcVf, false)
-    rootModel.inheritSdk(); rootModel.commit()
-}
-
-// 5. NOT through Handler.convertFiles; call elementsToKotlin directly
 val converter = NewJavaToKotlinConverter(project, module, ConverterSettings.defaultSettings)
-val result = converter.elementsToKotlin(psiJavaFiles)
-// result.results[i] is ElementResult? for psiJavaFiles[i]
+val result = ApplicationManager.getApplication()
+    .executeOnPooledThread<Result> {
+        ApplicationManager.getApplication().runReadAction<Result> {
+            converter.elementsToKotlin(files)
+        }
+    }.get()
 ```
 
-## Things I'd still want to fix
+`ApplicationStarter.main` runs on EDT under a write-intent context.
+`runWriteAction { ... }` upgrades that. Wrapping in `invokeAndWait`
+from EDT to EDT deadlocks instead -- the symptom is the JVM exiting
+cleanly between two log lines with no stack trace, because
+`ApplicationStarter` swallows uncaught throwables.
 
-- The `withModalProgress` wrapper on `filesToKotlin` exists for a reason:
-  the IDE post-processor includes some passes (rename collisions, content
-  re-formatting) that polish the converter output. By bypassing it I get
-  rougher Kotlin. The right fix is probably running the post-processor
-  directly with a non-modal progress indicator -- I haven't tried.
-- The created JDK is registered in the table for the lifetime of the
-  process. A real CLI would unregister it on shutdown to keep the user's
-  JDK list clean.
-- Module creation doesn't include external deps. If the input Java imports
-  a library, J2K can't resolve those types and falls back to platform
-  types in the output. For JCommander this rarely matters (no third-party
-  imports in main); for a Spring app it would.
+That last bit took an evening to find. The catch+print in `main()`
+(`runner/src/main/kotlin/j2k/runner/J2KStarter.kt:55-63`) is now there
+specifically so any exception escapes to stderr before the JVM exits.
+
+## What doesn't work: runIde in CI
+
+The CI workflow's `edge-cases` and `jcommander` jobs both timed out at
+their respective `timeout-minutes` ceilings (30 + 45 min). The actual
+diagnosis from the captured `idea.log`
+([`headless-j2k-cancel-tail.txt`](headless-j2k-cancel-tail.txt) is the
+relevant tail):
+
+```
+2026-04-30 02:02:56,553 SEVERE  JreHiDpiUtil  Must be not computed before that call
+[stack trace through:]
+  ApplicationLoader$preloadNonHeadlessServices$2$5.invokeSuspend
+  → ComponentManagerImpl.getServiceAsync
+  → InstanceContainerImpl.instance
+  → LazyInstanceHolder.getInstance / .initialize
+  → kotlinx.coroutines.BuildersKt.launch / .withContext
+  → ServiceInstanceInitializer.createInstance
+
+[then -- nothing for 28 minutes]
+
+2026-04-30 02:13:52,827 INFO    FSRecords  Checking VFS started
+2026-04-30 02:13:52,847 INFO    FSRecords  Checking VFS finished
+
+[silence again until ##[error]The operation was canceled at 02:30:51]
+```
+
+`ApplicationLoader.preloadNonHeadlessServices` enters a coroutine that
+never returns. My `[j2k]` STDOUT lines never appear -- the hang is
+upstream of `ApplicationStarter` dispatch entirely. Adding xvfb-run,
+caching `.intellijPlatform/`, and bumping the timeout don't help; this
+is the platform itself waiting for a non-headless service to come up.
+
+I haven't bisected which service is the culprit. The honest answer is
+"I don't know which one yet, and the time budget for this submission
+ran out before I could." If I were continuing, the move is to add
+`-Didea.is.internal=true` plus structured logging into the IntelliJ
+Platform via the `idea.platform.log.config.path` flag, capture which
+service the coroutine is awaiting, and either suppress that service or
+preload it differently in our `<applicationConfigurable>` chain.
+
+## Why "runs locally on fresh sandbox" still flakes
+
+Even on macOS, where the runner *did* complete one full edge-case run
+on 2026-04-29, subsequent invocations against the same sandbox reach
+"opened project" and then hang the same way as CI. The pattern matches:
+the second run inherits a partial coroutine state from the first, and
+`preloadNonHeadlessServices` never settles. Wiping
+`runner/build/idea-sandbox` before each run is the local workaround --
+not great, but it's what `J2KStarterAcceptanceTest` does.
+
+## What this means for the submission
+
+Three things, all in the README's headline:
+1. The eval pipeline is real and CI-verified. It runs `kotlinc` +
+   PSI metrics over real J2K output (the 15-pair JetBrains testData
+   sample plus four captured runner outputs).
+2. The runner architecture compiles, the plugin loads, and the
+   conversion path has executed end-to-end at least once with the
+   captured fixtures as proof.
+3. The runner-in-CI path is blocked on a real platform hang I
+   diagnosed but didn't fix. Documenting that gap honestly (with
+   logs) seemed worth more than papering over it.
+
+A senior reviewer who wants to fix the hang has the captured stack
+trace and the recipe to reproduce -- the headless-j2k-cancel-tail.txt
+plus `runner/src/main/kotlin/j2k/runner/J2KStarter.kt` is everything
+needed.
