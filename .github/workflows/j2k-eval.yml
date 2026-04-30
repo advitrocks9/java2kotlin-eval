@@ -80,6 +80,47 @@ jobs:
           name: edge-fixtures-eval
           path: reports/
 
+  llm-leg-eval:
+    name: eval over committed Claude-translated fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: install kotlinc
+        run: |
+          curl -sLo /tmp/kotlin.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip
+          unzip -q /tmp/kotlin.zip -d /opt
+          echo "/opt/kotlinc/bin" >> $GITHUB_PATH
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+      # Skip cleanly if no fixtures captured yet. The LLM translation is
+      # local-only (it costs API calls), so the captured outputs land in
+      # the repo on a separate commit. CI never calls the API.
+      - id: detect
+        run: |
+          if /usr/bin/find fixtures/llm-claude-converted -name '*.kt' -print -quit | grep -q .; then
+            echo "have_fixtures=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "have_fixtures=0" >> "$GITHUB_OUTPUT"
+            echo "[llm-leg-eval] no fixtures committed yet, skipping"
+          fi
+      - if: steps.detect.outputs.have_fixtures == '1'
+        run: ./gradlew :eval:run --args="fixtures/llm-claude-converted reports/llm-claude.md
+          --source=claude-sonnet-4-6
+          --baseline-corpus=fixtures/edge-converted
+          --allow-compile-fails=15"
+      - if: steps.detect.outputs.have_fixtures == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-leg-eval
+          path: reports/
+
   runner-builds:
     name: runner plugin compiles + plugin.xml validates
     runs-on: ubuntu-latest
