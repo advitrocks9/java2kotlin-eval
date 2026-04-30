@@ -18,6 +18,10 @@ What it took to get the converter running outside the IDE, and the
   via `kotlin-compiler-embeddable` + `KotlinCoreEnvironment`
 - one Kotlin post-processor (`ConstValFix.kt`) that catches the
   `const val` promotion gap I found and reports the metric delta
+- machine-readable per-sample artifact (`reports/<corpus>.jsonl`,
+  schema in `eval/src/main/kotlin/j2keval/Jsonl.kt`) that downstream
+  tooling can join on `(corpus, source, file)` -- the bones of a
+  multi-source benchmark, not just a single-converter scorer
 
 ## Honest scope
 
