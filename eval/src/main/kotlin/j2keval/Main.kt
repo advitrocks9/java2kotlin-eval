@@ -76,6 +76,15 @@ fun main(args: Array<String>) {
         BaselineDiff.compareCorpus(ktDir, baseRoot)
     }.orEmpty()
 
+    // Pair every .kt with its sibling .java if one exists; scan the .java
+    // for input-side counts so the report can answer "did J2K miss any".
+    val javaScans: Map<Path, JavaMetrics> = ktFiles.mapNotNull { kt ->
+        val javaSibling = ktDir.resolve(ktDir.relativize(kt).toString().removeSuffix(".kt") + ".java")
+        if (!javaSibling.toFile().exists()) null else javaSibling.let {
+            JavaScan.scan(it)?.let { jm -> kt to jm }
+        }
+    }.toMap()
+
     val report = Report.render(
         ktDir = ktDir,
         compile = compileResults,
@@ -83,6 +92,8 @@ fun main(args: Array<String>) {
         psi = psi,
         hypotheses = hypothesisResults,
         baselineComparisons = baselineComparisons,
+        javaScans = javaScans,
+        ktFiles = ktFiles,
     )
 
     val outFile = parsed.report
@@ -110,6 +121,7 @@ fun main(args: Array<String>) {
             hypotheses = hypothesisResults,
             expectations = expectations,
             baselineComparisons = baselineComparisons,
+            javaScans = javaScans,
         )
         Jsonl.write(jsonlPath, samples)
         println("[eval] wrote ${samples.size} JSONL records to $jsonlPath")
@@ -188,6 +200,7 @@ private fun buildSamples(
     hypotheses: List<Pair<String, HypothesisCheck>>,
     expectations: Map<String, List<Expectation>>,
     baselineComparisons: List<BaselineComparison>,
+    javaScans: Map<Path, JavaMetrics>,
 ): List<SampleResult> {
     val baselineByFile = baselineComparisons.associateBy { it.file }
     val byPath = ktFiles.associateWith { ktDir.relativize(it).toString() }
@@ -234,6 +247,19 @@ private fun buildSamples(
                     constEligibleVals = it.constEligibleVals,
                     innerClasses = it.innerClasses,
                     varargParams = it.varargParams,
+                )
+            },
+            metricsJava = javaScans[f]?.let {
+                MetricsJavaBlock(
+                    loc = it.locJava,
+                    tryWithResourceCount = it.tryWithResourceCount,
+                    resourceCount = it.resourceCount,
+                    anonymousClassExprs = it.anonymousClassExprs,
+                    staticFinalFields = it.staticFinalFields,
+                    staticFinalLiteralFields = it.staticFinalLiteralFields,
+                    varargParameters = it.varargParameters,
+                    innerClassDecls = it.innerClassDecls,
+                    singleAbstractMethodInterfaces = it.singleAbstractMethodInterfaces,
                 )
             },
             hypotheses = hs.zip(expects) { check, exp ->
