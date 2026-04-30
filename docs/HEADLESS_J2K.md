@@ -1,4 +1,4 @@
-# Headless J2K — what it took to get the converter running outside the IDE
+# Headless J2K -- what it took to get the converter running outside the IDE
 
 There is no public CLI for IntelliJ's Java→Kotlin converter. The
 [discuss.kotlinlang.org thread](https://discuss.kotlinlang.org/t/how-to-convert-java-source-files-into-kotlin-in-an-existing-project-using-command-line/1507)

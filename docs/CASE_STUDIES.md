@@ -1,4 +1,4 @@
-# Case studies — five files J2K got interesting
+# Case studies -- five files J2K got interesting
 
 These are five files from the headless run where the converter's output
 told me something I didn't know going in. Each one has the original
@@ -35,7 +35,7 @@ the private constructor. The expression-body conversion (`fun ... = ...`)
 is also nice. This is the case where my "I expected over-conservatism"
 prediction was wrong.
 
-## 2. Static-final constants — primitives promote, strings don't
+## 2. Static-final constants -- primitives promote, strings don't
 
 **Java input** (`edge-cases/02_static_final_constants/Sample.java`):
 
