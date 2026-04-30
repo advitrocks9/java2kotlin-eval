@@ -2,6 +2,7 @@ rootProject.name = "java2kotlin-eval"
 
 include("eval")
 include("runner")
+include("llm")
 
 pluginManagement {
     repositories {
