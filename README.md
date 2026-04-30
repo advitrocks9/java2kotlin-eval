@@ -1,23 +1,74 @@
 # java2kotlin-eval
 
-End-to-end pipeline that runs IntelliJ's static Java→Kotlin converter
-against a Java source tree, then scores the resulting Kotlin with metrics
-written in Kotlin.
+Two-piece pipeline around IntelliJ's static Java→Kotlin converter.
 
-Two pieces:
+`runner/` is an IntelliJ plugin -- an `ApplicationStarter` that opens an
+in-memory project, attaches a JDK + source root, and invokes
+`NewJavaToKotlinConverter.elementsToKotlin` from a pooled thread under a
+read action. Same architecture Meta describe in their [Kotlinator
+post](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/).
+What it took to get the converter running outside the IDE, and the
+**known platform gap that keeps it from running in CI**, is in
+[docs/HEADLESS_J2K.md](docs/HEADLESS_J2K.md).
 
-- `runner/` -- IntelliJ plugin. `ApplicationStarter` opens an in-memory
-  project, attaches a JDK + source root, and invokes
-  `NewJavaToKotlinConverter.elementsToKotlin` from a pooled thread under
-  a read action. This is the part Meta call out as hard in their
-  [Kotlinator post](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/).
-  How I got it working, and what didn't, is in
-  [docs/HEADLESS_J2K.md](docs/HEADLESS_J2K.md).
-- `eval/` -- standalone Kotlin app. Per-file `kotlinc` compile check,
-  structural metrics from regex (cheap pass) and from PSI (real pass via
-  `kotlin-compiler-embeddable` + `KotlinCoreEnvironment`), markdown
-  report. Eval logic is strict-Kotlin per the brief; the runner is
-  IntelliJ-platform Kotlin.
+`eval/` is a standalone Kotlin app that scores the converter's output:
+- module-wide `kotlinc` compile (single invocation, errors blamed back
+  to per-file)
+- structural metrics from regex (cheap pass) **and** from PSI walks
+  via `kotlin-compiler-embeddable` + `KotlinCoreEnvironment`
+- one Kotlin post-processor (`ConstValFix.kt`) that catches the
+  `const val` promotion gap I found and reports the metric delta
+
+## Honest scope
+
+CI runs the eval pipeline against committed corpora -- the runner
+plugin is **not** exercised in CI. `runIde` under xvfb on
+`ubuntu-latest` hangs in IntelliJ Platform's
+`preloadNonHeadlessServices` before my `ApplicationStarter`
+dispatches; same hang shape on macOS once the sandbox warms up. I have
+not isolated which non-headless service is the culprit and didn't have
+the time budget to dive deeper into IntelliJ Platform internals.
+
+What that means in practice:
+- The four `.kt` files under `fixtures/edge-converted/` are real
+  runner output captured locally on a fresh sandbox. Eval runs against
+  them in CI.
+- `scripts/run-edge-cases.sh` and `scripts/run-jcommander-eval.sh` are
+  the local-only paths. `J2K_RUN_ACCEPTANCE=1 ./gradlew :runner:test`
+  exercises the runner end-to-end against a one-file corpus.
+- The CI workflow has a `runner-builds` job that compiles the plugin +
+  runs `verifyPluginProjectConfiguration`. That catches API drift (e.g.
+  if a future IntelliJ Platform bump renames `JavaToKotlinAction.Handler`)
+  without paying the runIde tax.
+
+## Headline numbers
+
+`reports/newj2k.md` (uploaded as a CI artifact every run, 15-pair
+authentic J2K input/output sample fetched from a pinned commit of
+`intellij-community/plugins/kotlin/j2k/shared/tests/testData/newJ2k`):
+
+```
+files: 15
+kotlinc pass rate (--isolated): 14/15
+single failure: staticMembers/StaticImport.kt -- references `p.bar`
+from a sibling fixture the official tests inject; not a J2K bug
+```
+
+`reports/edge-raw.md` and `reports/edge-fixed.md` (CI artifacts; eval
+over the four committed runner outputs, before and after the
+`ConstValFix.kt` post-processor):
+
+```
+files: 4
+kotlinc pass rate (--module): 4/4
+const-eligible val (regex): 1   <-- BASE_PATH = "/api/v1" in 02_static_final_constants.kt
+after ConstValFix: 1 promoted
+```
+
+The const-val fix is the headline finding: J2K's NJ2K pass already
+promotes `private static final` numeric/boolean primitives but skips
+public string literals. `docs/PROPOSED_FIX.md` walks through the gap
+with the actual J2K output committed under `fixtures/edge-converted/`.
 
 ## Run it
 
@@ -25,81 +76,66 @@ Two pieces:
 brew install gradle openjdk@21
 brew install kotlin
 
-./gradlew :eval:test                          # unit tests
-bash scripts/fetch-newj2k-fixtures.sh         # 15-pair sample of authentic J2K
-                                              # input/output from intellij-community
-bash scripts/run-edge-cases.sh                # convert my own edge cases end-to-end
-                                              # (clones IntelliJ on first run, ~3 min)
-bash scripts/run-jcommander-eval.sh           # convert cbeust/jcommander
+./gradlew :eval:test                           # unit tests (post-processor scope rules)
+bash scripts/fetch-newj2k-fixtures.sh          # pull the 15-pair newJ2k sample
+./gradlew :eval:run --args="fixtures/newj2k reports/newj2k.md --isolated"
+./gradlew :eval:run --args="fixtures/edge-converted reports/edge-raw.md"
 ```
 
-The end-to-end runs report to `reports/*.md`. CI in
-`.github/workflows/j2k-eval.yml` runs the same pipeline on push.
+To exercise the runner end-to-end (fresh sandbox required, takes 5+
+minutes, see `docs/HEADLESS_J2K.md` for the macOS gotcha):
 
-## What's actually in here
+```
+J2K_RUN_ACCEPTANCE=1 ./gradlew :runner:test --tests '*Acceptance*'
+# or, on a one-shot corpus:
+./gradlew :runner:runIde --args="j2k <input-java-dir> <output-kt-dir>"
+```
 
-- 15 hand-written Java edge cases under `edge-cases/`, each tagged with
-  a hypothesis I wrote down before checking. See
-  [edge-cases/HYPOTHESES.md](edge-cases/HYPOTHESES.md) for the table and
-  [docs/EDGE_CASES.md](docs/EDGE_CASES.md) for what landed and what
+## Repo layout
+
+- `edge-cases/` -- 15 hand-written Java cases, each tagged with a
+  hypothesis I wrote down before running it through the converter. See
+  [`HYPOTHESES.md`](edge-cases/HYPOTHESES.md) for the table and
+  [`docs/EDGE_CASES.md`](docs/EDGE_CASES.md) for what landed and what
   didn't.
-- A 15-pair fixture sample pulled from JetBrains' own
-  `intellij-community/plugins/kotlin/j2k/shared/tests/testData/newJ2k`,
-  used as a cross-check (`scripts/fetch-newj2k-fixtures.sh`).
-- The runner wired up to convert `cbeust/jcommander` (73 .java files in
-  `src/main/java`) via `scripts/run-jcommander-eval.sh`. The committed
-  reports under `reports/` are produced by CI on Linux; on macOS the
-  IDE-platform sandbox has been flaky for me and I haven't isolated why
-  -- see `docs/HEADLESS_J2K.md`.
-- Five short case studies in [docs/CASE_STUDIES.md](docs/CASE_STUDIES.md)
-  picking out interesting things the converter does on the edge cases.
-- One Kotlin post-processor (`ConstValFix.kt`) that promotes
-  `val NAME = LITERAL` to `const val` for the case J2K misses (public
-  string constants). 7 unit tests on the scope rules. Demo in
-  [docs/PROPOSED_FIX.md](docs/PROPOSED_FIX.md).
-
-## Headline numbers (newJ2k 15-pair sample)
-
-```
-files: 15
-kotlinc pass rate: 14/15 (93.3%)
-
-PSI metrics:
-  !! not-null asserts:                             0
-  object expression (anon class):                  2
-  fun interface declarations:                      1
-  const val:                                       0
-  val (non-const):                                 3
-  const-eligible val:                              0
-  inner class:                                     0
-  vararg params:                                   2
-```
-
-Single failure: `staticMembers/StaticImport.kt` references `p.bar` from
-a sibling fixture file the official tests inject. Not a J2K bug.
+- `fixtures/newj2k/` -- 15-pair sample fetched from a pinned
+  intellij-community commit. Cross-check corpus.
+- `fixtures/edge-converted/` -- 4 captured `.kt` outputs from a local
+  runner pass. Eval CI runs against these.
+- `docs/CASE_STUDIES.md` -- five before/after pairs annotating
+  interesting J2K behaviour I observed.
 
 ## Background reading I leaned on
 
-- Meta, [*Translating Java to Kotlin at Scale*](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/) -- the architectural source for the ApplicationStarter pattern and for what Kotlinator's post-processor pipeline actually does (preprocess → J2K → ~150 transforms → linters → build-fix).
-- JetBrains, [`intellij-community/plugins/kotlin/j2k`](https://github.com/JetBrains/intellij-community/tree/master/plugins/kotlin/j2k) -- the converter source and its testData.
-- The Kotlin discuss thread on
-  [extracting J2K from intellij-community](https://discuss.kotlinlang.org/t/extracting-the-new-j2k-transpiler-from-the-intellij-community-project/22169)
-  ends with consensus that you can't, J2K is tightly coupled to the IDE.
-  This whole repo is one demonstration that you can, *if* you're willing
-  to ship the IDE alongside the plugin.
+- Meta, [*Translating Java to Kotlin at
+  Scale*](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/)
+  -- the architectural source for the ApplicationStarter pattern, plus
+  the Kotlinator post-processor pipeline (preprocess → J2K → ~150
+  transforms → linters → build-fix) which is way larger in scope than
+  this submission.
+- JetBrains, [`intellij-community/plugins/kotlin/j2k`](https://github.com/JetBrains/intellij-community/tree/master/plugins/kotlin/j2k)
+  -- the converter source and its `shared/tests/testData/newJ2k`
+  baseline.
+- The Kotlin discuss thread on [extracting J2K from
+  intellij-community](https://discuss.kotlinlang.org/t/extracting-the-new-j2k-transpiler-from-the-intellij-community-project/22169)
+  ends with "you can't, J2K is tightly coupled to the IDE." This repo
+  is one demonstration that you can, **if** you're willing to ship the
+  IDE alongside the plugin -- and an honest record of where that
+  premise still cracks.
 
 ## What I'd want to do next
 
-1. Use the JavaToKotlinAction.Handler post-processing pass instead of
-   `elementsToKotlin` directly -- that would give me the IDE's full
-   cosmetic + rename-resolution passes. It needs a non-modal progress
-   indicator since `withModalProgress` deadlocks in headless. I haven't
-   tried.
-2. PSI-based eval right now only operates on the .kt output; pairing
-   each .kt with its source .java and walking both ASTs in parallel
-   would let me say "the Java had 12 try-with-resource blocks, J2K
-   produced 12 `.use {}` blocks, none missed." That's a more honest
-   recall metric than the count of `.use {}` on the Kotlin side alone.
-3. A runtime-correctness leg: convert JCommander, compile the .kt with
-   the original Java tests, run the suite, see how many pass. Compile
-   rate is necessary; correct-at-runtime is the real bar.
+1. Find the specific service behind the
+   `preloadNonHeadlessServices` hang. The tail of the cancelled-CI
+   `idea.log` (committed under [`docs/headless-j2k-cancel-tail.txt`](docs/headless-j2k-cancel-tail.txt))
+   shows `LazyInstanceHolder.initialize` →
+   `ApplicationLoader.preloadNonHeadlessServices` as the deadlock
+   site. Bisecting which service is the culprit is the obvious next
+   move; it would unblock the runner-in-CI path entirely.
+2. Pair the PSI metrics with the `.java` input via JavaParser. The
+   current PSI pass only sees Kotlin output -- "we counted N
+   `.use {}` blocks" doesn't answer "did J2K miss any". Real recall
+   metric needs Java-side parsing.
+3. A runtime-correctness leg on JCommander: convert, compile the
+   `.kt` against the original TestNG suite, count pass rate. Compile
+   rate is necessary; tests-still-pass is the actual bar.
