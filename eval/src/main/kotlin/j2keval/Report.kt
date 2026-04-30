@@ -10,6 +10,7 @@ object Report {
         structural: List<StructuralMetrics>,
         psi: List<PsiMetrics> = emptyList(),
         hypotheses: List<Pair<String, HypothesisCheck>>,
+        baselineComparisons: List<BaselineComparison> = emptyList(),
     ): String = buildString {
         val total = compile.size
         val passed = compile.count { it.ok }
@@ -142,6 +143,42 @@ object Report {
                 appendLine("| `$file` | ${h.tag} | $mark | ${h.expectation} | `$sample` |")
             }
             appendLine()
+        }
+
+        if (baselineComparisons.isNotEmpty()) {
+            val identical = baselineComparisons.count { it.identical }
+            val drifted = baselineComparisons.count { !it.identical && !it.baselineMissing }
+            val missing = baselineComparisons.count { it.baselineMissing }
+            appendLine("## Baseline diff")
+            appendLine()
+            appendLine("Compares this corpus against a reference (`--baseline-corpus=...`). Normalized line-level diff. Identical: $identical, drifted: $drifted, baseline missing: $missing.")
+            appendLine()
+            appendLine("| file | status | deltas |")
+            appendLine("|------|--------|--------|")
+            for (c in baselineComparisons) {
+                val status = when {
+                    c.baselineMissing -> "**baseline missing**"
+                    c.identical -> "identical"
+                    else -> "**drifted**"
+                }
+                appendLine("| `${c.file}` | $status | ${c.deltaCount} |")
+            }
+            appendLine()
+            // Inline the first three drifted hunks so reviewers don't have to
+            // chase the JSONL artifact for the most common case.
+            val sample = baselineComparisons.filter { !it.identical && !it.baselineMissing && it.unifiedDiff != null }.take(3)
+            if (sample.isNotEmpty()) {
+                appendLine("### Drift hunks (first 3)")
+                appendLine()
+                for (c in sample) {
+                    appendLine("`${c.file}`:")
+                    appendLine()
+                    appendLine("```diff")
+                    appendLine(c.unifiedDiff!!.lines().take(40).joinToString("\n"))
+                    appendLine("```")
+                    appendLine()
+                }
+            }
         }
     }
 

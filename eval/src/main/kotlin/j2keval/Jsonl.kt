@@ -26,11 +26,19 @@ data class SampleResult(
     val metricsRegex: MetricsRegexBlock,
     val metricsPsi: MetricsPsiBlock?,      // null if PSI scan failed/skipped
     val hypotheses: List<HypothesisBlock>,
+    val baseline: BaselineBlock? = null,   // null if --baseline-corpus= not set
 ) {
     companion object {
         const val SCHEMA_VERSION = 1
     }
 }
+
+data class BaselineBlock(
+    val identical: Boolean,
+    val deltaCount: Int,
+    val baselineMissing: Boolean,
+    val unifiedDiff: String?,
+)
 
 data class CompileBlock(
     val ok: Boolean,
@@ -139,6 +147,14 @@ object Jsonl {
                     kv("expectation", h.expectation)
                     kvNullable("sample", h.sample)
                 }
+            }
+        }
+        if (r.baseline != null) {
+            c.kvObj("baseline") {
+                kv("identical", r.baseline.identical)
+                kv("delta_count", r.baseline.deltaCount)
+                kv("baseline_missing", r.baseline.baselineMissing)
+                kvNullable("unified_diff", r.baseline.unifiedDiff)
             }
         }
         sb.append('}')
