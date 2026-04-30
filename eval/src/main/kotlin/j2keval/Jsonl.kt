@@ -25,6 +25,7 @@ data class SampleResult(
     val compile: CompileBlock,
     val metricsRegex: MetricsRegexBlock,
     val metricsPsi: MetricsPsiBlock?,      // null if PSI scan failed/skipped
+    val metricsJava: MetricsJavaBlock? = null,   // null if no paired .java
     val hypotheses: List<HypothesisBlock>,
     val baseline: BaselineBlock? = null,   // null if --baseline-corpus= not set
 ) {
@@ -32,6 +33,18 @@ data class SampleResult(
         const val SCHEMA_VERSION = 1
     }
 }
+
+data class MetricsJavaBlock(
+    val loc: Int,
+    val tryWithResourceCount: Int,
+    val resourceCount: Int,
+    val anonymousClassExprs: Int,
+    val staticFinalFields: Int,
+    val staticFinalLiteralFields: Int,
+    val varargParameters: Int,
+    val innerClassDecls: Int,
+    val singleAbstractMethodInterfaces: Int,
+)
 
 data class BaselineBlock(
     val identical: Boolean,
@@ -134,6 +147,21 @@ object Jsonl {
                     kv("const_eligible_vals", constEligibleVals)
                     kv("inner_classes", innerClasses)
                     kv("vararg_params", varargParams)
+                }
+            }
+        }
+        if (r.metricsJava != null) {
+            c.kvObj("metrics_java") {
+                with(r.metricsJava) {
+                    kv("loc", loc)
+                    kv("try_with_resource_count", tryWithResourceCount)
+                    kv("resource_count", resourceCount)
+                    kv("anonymous_class_exprs", anonymousClassExprs)
+                    kv("static_final_fields", staticFinalFields)
+                    kv("static_final_literal_fields", staticFinalLiteralFields)
+                    kv("vararg_parameters", varargParameters)
+                    kv("inner_class_decls", innerClassDecls)
+                    kv("single_abstract_method_interfaces", singleAbstractMethodInterfaces)
                 }
             }
         }

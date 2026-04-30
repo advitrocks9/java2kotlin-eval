@@ -11,6 +11,8 @@ object Report {
         psi: List<PsiMetrics> = emptyList(),
         hypotheses: List<Pair<String, HypothesisCheck>>,
         baselineComparisons: List<BaselineComparison> = emptyList(),
+        javaScans: Map<Path, JavaMetrics> = emptyMap(),
+        ktFiles: List<Path> = emptyList(),
     ): String = buildString {
         val total = compile.size
         val passed = compile.count { it.ok }
@@ -141,6 +143,56 @@ object Report {
                 val mark = if (h.passed) "yes" else "**no**"
                 val sample = (h.actualSnippet ?: "").replace("|", "\\|").replace("\n", " ").take(80)
                 appendLine("| `$file` | ${h.tag} | $mark | ${h.expectation} | `$sample` |")
+            }
+            appendLine()
+        }
+
+        if (javaScans.isNotEmpty()) {
+            val javaTotals = javaScans.values.fold(IntArray(6)) { acc, j ->
+                acc[0] += j.resourceCount
+                acc[1] += j.anonymousClassExprs
+                acc[2] += j.staticFinalLiteralFields
+                acc[3] += j.varargParameters
+                acc[4] += j.innerClassDecls
+                acc[5] += j.singleAbstractMethodInterfaces
+                acc
+            }
+            // pull per-file Kotlin numbers from `structural`. Restrict to files
+            // we have a Java scan for, so the ratio compares apples to apples.
+            val structByPath = structural.associateBy { it.file }
+            val psiByPath = psi.associateBy { it.file }
+            val ktTotals = IntArray(6)
+            for (f in ktFiles) {
+                if (javaScans[f] == null) continue
+                val s = structByPath[f] ?: continue
+                val p = psiByPath[f]
+                ktTotals[0] += s.useBlocks
+                // Anonymous objects: prefer PSI count if available -- regex
+                // double-counts in some shapes; PSI walks the actual tree.
+                ktTotals[1] += p?.objectLiteralExprs ?: s.anonymousObjects
+                ktTotals[2] += s.constVal               // const val promotions
+                ktTotals[3] += s.varargParams
+                ktTotals[4] += s.innerClass
+                ktTotals[5] += s.funInterface
+            }
+            appendLine("## Java -> Kotlin recall")
+            appendLine()
+            appendLine("Pairs each `.kt` with its sibling `.java` (when one exists, ${javaScans.size}/${ktFiles.size} files here) and counts the same syntactic categories on both sides. Ratio < 1 means J2K dropped occurrences; ratio > 1 means one Java idiom expands into multiple Kotlin ones (e.g. one `try-with-resources` with N resources nests N `.use {}` blocks).")
+            appendLine()
+            appendLine("| category | java | kotlin | ratio |")
+            appendLine("|----------|------|--------|-------|")
+            val labels = listOf(
+                "try-with-resources -> .use{}" to 0,
+                "anonymous classes -> object literals" to 1,
+                "static final w/ literal RHS -> const val" to 2,
+                "varargs -> vararg params" to 3,
+                "inner class -> inner class" to 4,
+                "single-abstract-method iface -> fun interface" to 5,
+            )
+            for ((label, idx) in labels) {
+                val j = javaTotals[idx]; val k = ktTotals[idx]
+                val ratio = if (j == 0) "n/a" else "%.2f".format(k.toDouble() / j)
+                appendLine("| $label | $j | $k | $ratio |")
             }
             appendLine()
         }
