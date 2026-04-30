@@ -36,6 +36,7 @@ data class SampleResult(
 
 data class MetricsJavaBlock(
     val loc: Int,
+    val parseFailed: Boolean,
     val tryWithResourceCount: Int,
     val resourceCount: Int,
     val anonymousClassExprs: Int,
@@ -154,6 +155,7 @@ object Jsonl {
             c.kvObj("metrics_java") {
                 with(r.metricsJava) {
                     kv("loc", loc)
+                    kv("parse_failed", parseFailed)
                     kv("try_with_resource_count", tryWithResourceCount)
                     kv("resource_count", resourceCount)
                     kv("anonymous_class_exprs", anonymousClassExprs)

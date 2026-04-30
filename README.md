@@ -161,6 +161,12 @@ To re-translate via Claude (costs ~$0.15 in API tokens):
 ANTHROPIC_API_KEY=sk-... bash scripts/run-llm-eval.sh
 ```
 
+**Privacy note:** that script POSTs the full contents of every `.java`
+under `edge-cases/` to `api.anthropic.com`. The committed `edge-cases/`
+corpus is hand-written sample code; running on it is fine. Do not point
+it at proprietary or licensed source unless your Anthropic data handling
+agreement covers that traffic.
+
 ## Repo layout
 
 - `eval/` -- scoring app + post-processor + JSONL schema + compare.

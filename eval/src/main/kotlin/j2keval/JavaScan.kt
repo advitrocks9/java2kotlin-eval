@@ -1,6 +1,7 @@
 package j2keval
 
-import com.github.javaparser.StaticJavaParser
+import com.github.javaparser.JavaParser
+import com.github.javaparser.ParserConfiguration
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration
 import com.github.javaparser.ast.body.FieldDeclaration
 import com.github.javaparser.ast.body.MethodDeclaration
@@ -25,6 +26,10 @@ import java.nio.file.Path
 data class JavaMetrics(
     val file: Path,
     val locJava: Int,
+    /** True if JavaParser failed to parse the file. All count fields are
+     *  zero when this is true; without the flag, "scanner failed" looks
+     *  identical to "file had zero constructs" and silently skews recall. */
+    val parseFailed: Boolean,
     val tryWithResourceCount: Int,        // statements, not resources
     val resourceCount: Int,                // sum of resources across statements
     val anonymousClassExprs: Int,
@@ -37,6 +42,19 @@ data class JavaMetrics(
 
 object JavaScan {
 
+    /**
+     * Permissive parser. The newj2k testData deliberately includes invalid
+     * Java (e.g. projections.java is missing a semicolon to test J2K's
+     * resilience against parse errors). We still want best-effort syntactic
+     * counts off whatever JavaParser CAN recover. The parser keeps a
+     * partial AST when individual nodes fail, so findAll() still returns
+     * useful numbers as long as the overall ParseResult has any result
+     * tree at all.
+     */
+    private val parser = JavaParser(
+        ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.BLEEDING_EDGE)
+    )
+
     fun scan(file: Path): JavaMetrics? {
         val text = runCatching { file.toFile().readText() }.getOrNull() ?: return null
         // Some newj2k fixtures are fragment-style (method body or single
@@ -47,12 +65,24 @@ object JavaScan {
         } else {
             text
         }
-        val cu = runCatching { StaticJavaParser.parse(wrapped) }.getOrNull() ?: return JavaMetrics(
-            file = file, locJava = text.count { it == '\n' } + 1,
-            tryWithResourceCount = 0, resourceCount = 0,
-            anonymousClassExprs = 0, staticFinalFields = 0, staticFinalLiteralFields = 0,
-            varargParameters = 0, innerClassDecls = 0, singleAbstractMethodInterfaces = 0,
-        )
+        // parser.parse returns a ParseResult that may have a partial AST
+        // even when the source has syntax errors. Take it whenever it's
+        // present; only fall through to parse_failed=true if we can't
+        // recover any tree at all.
+        val result = runCatching { parser.parse(wrapped) }.getOrNull()
+        val cu = result?.result?.orElse(null) ?: run {
+            System.err.println("[eval] JavaParser failed to parse $file; recall counts marked parse_failed=true")
+            return JavaMetrics(
+                file = file, locJava = text.count { it == '\n' } + 1, parseFailed = true,
+                tryWithResourceCount = 0, resourceCount = 0,
+                anonymousClassExprs = 0, staticFinalFields = 0, staticFinalLiteralFields = 0,
+                varargParameters = 0, innerClassDecls = 0, singleAbstractMethodInterfaces = 0,
+            )
+        }
+        // result.isSuccessful is false when problems were reported; the AST
+        // is still usable but we surface the partial state in the JSONL so
+        // a reviewer can see "scan ran but on a damaged tree". For now we
+        // leave parseFailed=false in that case since findAll() still works.
 
         val tryWithRes = cu.findAll(TryStmt::class.java).filter { it.resources.isNotEmpty() }
         val resCount = tryWithRes.sumOf { it.resources.size }
@@ -85,6 +115,7 @@ object JavaScan {
         return JavaMetrics(
             file = file,
             locJava = text.count { it == '\n' } + 1,
+            parseFailed = false,
             tryWithResourceCount = tryWithRes.size,
             resourceCount = resCount,
             anonymousClassExprs = anonExprs,
