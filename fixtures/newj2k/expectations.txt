@@ -1,0 +1,40 @@
+# Hypothesis checks for fixtures/newj2k -- the 15-pair authentic J2K
+# input/output sample from intellij-community's own testData (pinned commit,
+# fetched by scripts/fetch-newj2k-fixtures.sh). The .kt side of each pair is
+# JetBrains' own regression baseline -- exactly what J2K produces today,
+# locked in by their tests. Asserting against this baseline catches drift if
+# we ever bump the pinned commit.
+#
+# Format: relpath | tag | yes|no | regex | description
+
+# Functional interfaces. Annotated SAM gets `fun interface` lift. The
+# unannotated case does NOT promote -- J2K is conservative without the
+# @FunctionalInterface annotation. Important: this contradicts an earlier
+# claim in docs/EDGE_CASES.md that "J2K detects the structural shape, not
+# just @FunctionalInterface" -- the actual fixture proves otherwise. Doc is
+# corrected; this expectation is the executable proof.
+functionalInterfaces/MyRunnable/MyRunnable.kt                                           | fun_interface_promoted                       | yes | fun interface MyRunnable | @FunctionalInterface annotated SAM becomes fun interface
+functionalInterfaces/NoFunctionalInterfaceAnnotation/NoFunctionalInterfaceAnnotation.kt | fun_interface_NOT_promoted_without_annotation | no  | fun\s+interface          | structural SAM without @FunctionalInterface stays plain interface
+
+# try-with-resources -> .use {}.
+tryWithResource/Simple/Simple.kt                       | use_block         | yes | \.use\s*\{                   | single-resource -> .use {}
+tryWithResource/MultipleResources/MultipleResources.kt | nested_use_blocks | yes | \.use\s*\{[\s\S]*?\.use\s*\{ | multi-resource nests two .use {} blocks
+
+# Varargs. Java ellipsis -> Kotlin vararg. Both fixtures pin the same shape.
+varArg/varargLengthAccess/varargLengthAccess.kt           | vararg_kept | yes | \bvararg\s+objs | Java ellipsis -> vararg
+varArg/ellipsisTypeSingleParams/ellipsisTypeSingleParams.kt | vararg_kept | yes | \bvararg\s+objs | same on single-param case
+
+# Nullability. Field assigned null at any point -> nullable property type.
+# Initialized-null case keeps the explicit `= null` initializer.
+nullability/FieldAssignedWithNull/FieldAssignedWithNull.kt       | nullable_field_var | yes | var\s+s\s*:\s*String\?            | field assigned null becomes var: String?
+nullability/FieldInitializedWithNull/FieldInitializedWithNull.kt | nullable_init_null | yes | var\s+s\s*:\s*String\?\s*=\s*null | initialized-with-null becomes var: String? = null
+
+# Enum body method. Kotlin requires `open` on the base method when an enum
+# constant overrides; J2K inserts it.
+enum/constantsWithBody1/constantsWithBody1.kt | enum_method_open | yes | open fun bar | enum body override requires open on base method
+
+# field/nonConstInitializer. RHS is a function call, so the val is NOT
+# const-promoted. Asserts both presence of the plain-val form AND absence
+# of any `const val field` form -- catches over-promotion regressions.
+field/nonConstInitializer/nonConstInitializer.kt | non_const_method_init     | yes | private val field = methodCall\(\) | non-const initializer stays plain val
+field/nonConstInitializer/nonConstInitializer.kt | function_init_not_const   | no  | const\s+val\s+field                | function-call initializer is NOT const-promoted

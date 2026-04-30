@@ -9,7 +9,7 @@ object Report {
         compile: List<CompileResult>,
         structural: List<StructuralMetrics>,
         psi: List<PsiMetrics> = emptyList(),
-        hypotheses: Map<String, HypothesisCheck>,
+        hypotheses: List<Pair<String, HypothesisCheck>>,
     ): String = buildString {
         val total = compile.size
         val passed = compile.count { it.ok }
@@ -128,9 +128,11 @@ object Report {
         }
 
         if (hypotheses.isNotEmpty()) {
+            val passed = hypotheses.count { it.second.passed }
+            val total = hypotheses.size
             appendLine("## Hypothesis checks")
             appendLine()
-            appendLine("Each row tests a single claim about how J2K should handle a Java idiom.")
+            appendLine("Each row tests a single claim about how J2K should handle a Java idiom. Pass rate: $passed/$total.")
             appendLine()
             appendLine("| file | tag | passed | expectation | sample |")
             appendLine("|------|-----|--------|-------------|--------|")

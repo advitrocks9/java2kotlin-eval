@@ -36,7 +36,11 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
       - run: bash scripts/fetch-newj2k-fixtures.sh
       - run: ./gradlew :eval:test
-      - run: ./gradlew :eval:run --args="fixtures/newj2k reports/newj2k.md --isolated"
+      # --allow-compile-fails=1 covers staticMembers/StaticImport.kt, whose
+      # p.bar reference targets a sibling fixture file that the
+      # intellij-community test runner injects but our standalone eval does
+      # not. Documented in docs/EDGE_CASES.md.
+      - run: ./gradlew :eval:run --args="fixtures/newj2k reports/newj2k.md --isolated --expectations=fixtures/newj2k/expectations.txt --allow-compile-fails=1"
       - uses: actions/upload-artifact@v4
         with:
           name: newj2k-cross-check
@@ -62,8 +66,11 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
       # Eval runs over the committed runner output. Runs the const-val
-      # post-processor and re-evals to show the metric delta.
-      - run: ./gradlew :eval:run --args="fixtures/edge-converted reports/edge-raw.md"
+      # post-processor and re-evals to show the metric delta. The first
+      # invocation carries --expectations=; the post-fix invocation does not,
+      # because some hypotheses (notably string_const_NOT_promoted) test the
+      # pre-fix gap and would flip after ConstValFix mutates the file.
+      - run: ./gradlew :eval:run --args="fixtures/edge-converted reports/edge-raw.md --expectations=fixtures/edge-converted/expectations.txt"
       - run: ./gradlew :eval:run --args="fix-const-val fixtures/edge-converted"
       - run: ./gradlew :eval:run --args="fixtures/edge-converted reports/edge-fixed.md"
       # restore the committed fixture so a re-run is reproducible

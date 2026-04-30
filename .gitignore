@@ -15,3 +15,6 @@ generated/
 .cache/
 .intellijPlatform/
 SUBMISSION.md
+# Eval reports are generated artifacts (uploaded as CI artifacts every run);
+# committing them would cause merge churn on every push.
+reports/

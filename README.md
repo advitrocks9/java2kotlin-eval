@@ -49,7 +49,8 @@ authentic J2K input/output sample fetched from a pinned commit of
 
 ```
 files: 15
-kotlinc pass rate (--isolated): 14/15
+kotlinc pass rate (--isolated):     14/15
+hypothesis checks (10 fixtures):    11/11 passing
 single failure: staticMembers/StaticImport.kt -- references `p.bar`
 from a sibling fixture the official tests inject; not a J2K bug
 ```
@@ -60,10 +61,18 @@ over the four committed runner outputs, before and after the
 
 ```
 files: 4
-kotlinc pass rate (--module): 4/4
-const-eligible val (regex): 1   <-- BASE_PATH = "/api/v1" in 02_static_final_constants.kt
-after ConstValFix: 1 promoted
+kotlinc pass rate (--module):    4/4
+hypothesis checks (4 fixtures):  8/8 passing
+const-eligible val (regex):      1   <-- BASE_PATH = "/api/v1" in 02_static_final_constants.kt
+after ConstValFix:               1 promoted
 ```
+
+Hypothesis checks come from `fixtures/<corpus>/expectations.txt` -- one
+falsifiable line per claim (`relpath | tag | yes|no | regex | desc`). The
+eval renders a "Hypothesis checks" table in each report and exits with
+code 3 if any expectation fails, so CI fails when J2K behavior we
+documented stops being true. See `docs/EDGE_CASES.md` for the claims and
+how a known doc drift was caught and corrected by the executable check.
 
 The const-val fix is the headline finding: J2K's NJ2K pass already
 promotes `private static final` numeric/boolean primitives but skips
@@ -78,8 +87,10 @@ brew install kotlin
 
 ./gradlew :eval:test                           # unit tests (post-processor scope rules)
 bash scripts/fetch-newj2k-fixtures.sh          # pull the 15-pair newJ2k sample
-./gradlew :eval:run --args="fixtures/newj2k reports/newj2k.md --isolated"
-./gradlew :eval:run --args="fixtures/edge-converted reports/edge-raw.md"
+./gradlew :eval:run --args="fixtures/newj2k reports/newj2k.md --isolated \
+    --expectations=fixtures/newj2k/expectations.txt --allow-compile-fails=1"
+./gradlew :eval:run --args="fixtures/edge-converted reports/edge-raw.md \
+    --expectations=fixtures/edge-converted/expectations.txt"
 ```
 
 To exercise the runner end-to-end (fresh sandbox required, takes 5+
