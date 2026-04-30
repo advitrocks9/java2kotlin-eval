@@ -69,8 +69,12 @@ object JavaScan {
             )
         }
         // result.isSuccessful() can be false when problems were reported even
-        // though the partial tree is usable. leave parseFailed=false there;
-        // findAll() still returns useful numbers.
+        // though the partial tree is usable. leaving parseFailed=false there
+        // -- findAll() still returns useful numbers off the recoverable parts.
+        // caveat for whoever reads this later: a syntactically broken .java
+        // can land here with parseFailed=false. the recall ratio will reflect
+        // the partial tree (i.e. could undercount). projections.java is the
+        // only fixture this hits today.
 
         val tryWithRes = cu.findAll(TryStmt::class.java).filter { it.resources.isNotEmpty() }
         val resCount = tryWithRes.sumOf { it.resources.size }
