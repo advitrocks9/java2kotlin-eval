@@ -37,6 +37,15 @@ fun main(args: Array<String>) {
         val n = runConstValFix(Path.of(args[1]))
         exitProcess(if (n > 0) 0 else 0)
     }
+    if (args.isNotEmpty() && args[0] == "compare") {
+        if (args.size < 3) {
+            System.err.println("usage: j2keval compare <a.jsonl> <b.jsonl> [<out.md>]")
+            exitProcess(2)
+        }
+        val out = if (args.size >= 4) Path.of(args[3]) else null
+        Compare.run(Path.of(args[1]), Path.of(args[2]), out)
+        exitProcess(0)
+    }
 
     val parsed = parseArgs(args.toList())
     val ktDir = parsed.ktDir
