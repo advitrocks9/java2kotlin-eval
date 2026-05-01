@@ -114,7 +114,7 @@ jobs:
         run: ./gradlew :eval:run --args="fixtures/llm-claude-converted reports/llm-claude.md
           --source=claude-sonnet-4-6
           --baseline-corpus=fixtures/edge-converted
-          --allow-compile-fails=15"
+          --expectations=fixtures/llm-claude-converted/expectations.txt"
       - if: steps.detect.outputs.have_fixtures == '1'
         uses: actions/upload-artifact@v4
         with:

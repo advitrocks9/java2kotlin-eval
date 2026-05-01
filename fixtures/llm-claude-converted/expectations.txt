@@ -1,0 +1,50 @@
+# Hypothesis checks for fixtures/llm-claude-converted -- the 15 .kt files
+# captured from Claude Sonnet 4.6 translating the edge-cases/ Java corpus.
+# Each line encodes one observed behavior. Failure = future captures
+# (different model, different prompt) drifted from this baseline.
+#
+# Format: relpath | tag | yes|no | regex | description
+#
+# These claims are deliberately distinct from fixtures/edge-converted/
+# expectations.txt because Claude's output diverges from static J2K's
+# in several places. The reports/llm-claude.md "Baseline diff" section
+# shows the side-by-side; this file pins the LLM-side behavior so it
+# can regress.
+
+# h.01 anonymous Runnable -- Claude lifts to SAM lambda; static J2K does not.
+01_anonymous_runnable.kt | sam_lambda_lifted     | yes | private val hook = Runnable\s*\{ | LLM lifted anon Runnable to SAM lambda (static J2K kept anon-object form)
+01_anonymous_runnable.kt | not_anon_object_form  | no  | object\s*:\s*Runnable             | LLM did NOT keep the anon-object form
+
+# h.02 const promotion -- Claude promotes ALL static finals including the
+# string and the computed (1+2) expressions. This is the J2K gap that
+# ConstValFix.kt was patching, solved upstream by the LLM.
+02_static_final_constants.kt | const_string_promoted   | yes | const\s+val\s+BASE_PATH | LLM promoted public String static final to const val (J2K skips this)
+02_static_final_constants.kt | const_computed_promoted | yes | const\s+val\s+COMPUTED  | LLM promoted compile-time-constant expression (1+2) to const val
+02_static_final_constants.kt | array_kept_plain_val    | yes | ^\s*val\s+EXCLUDED\s*:\s*IntArray | array initializer correctly stays plain val (not const-eligible)
+
+# h.06 negative instanceof pattern -- Kotlin's smart cast scope is purely
+# lexical. The Java `if (!(o instanceof Integer i))` shape requires the
+# converter to invert the check so the smart-cast type binding lives in
+# the right scope. Claude does it.
+06_instanceof_pattern.kt | smart_cast_inversion | yes | if\s*\(o\s*!is\s+Int\) | LLM inverted negative instanceof to !is to fit smart-cast scope
+
+# h.07 try-with-resources -- both sources collapse to .use{}. Claude
+# additionally drops the unnecessary nullable params (source had
+# non-null parameters; static J2K marks them String? out of caution).
+07_try_with_resources.kt | use_block             | yes | \.use\s*\{                    | try-with-resources -> .use{}
+07_try_with_resources.kt | not_overconservative_nullable | no  | fun readOne\(path: String\?\) | LLM did NOT mark non-null param as nullable
+
+# h.08 utility class -- Claude uses top-level `object Sample` here (same
+# choice as static J2K). Notable that Claude makes a different call on
+# 02_static_final_constants.kt (companion wrapper there) -- the LLM
+# distinguishes constants-only classes (companion) from pure-function
+# utility classes (top-level object). Static J2K uses top-level object
+# for both.
+08_static_utility_class.kt | top_level_object_for_pure_utility | yes | ^object\s+Sample\s*\{ | LLM agrees with J2K on top-level object for pure-utility class
+08_static_utility_class.kt | not_companion_for_pure_utility    | no  | companion\s+object    | LLM does NOT add a companion wrapper for the pure-function case
+
+# h.12 overloads-to-defaults -- Claude does NOT collapse three overloads
+# into one fun with default args. Same conservatism as static J2K.
+# Surfaces my hypothesis (h.12) as not-landed for either converter.
+12_overloaded_default_args.kt | overloads_kept_separate | yes | fun render\(s: String\): String | LLM kept 1-arg overload as a separate fun (no default-arg collapse)
+12_overloaded_default_args.kt | three_overloads_present | yes | fun render\(s: String, prefix: String, upper: Boolean\) | full 3-arg render still present

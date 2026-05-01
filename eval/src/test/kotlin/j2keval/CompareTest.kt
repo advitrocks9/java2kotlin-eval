@@ -37,6 +37,24 @@ class CompareTest {
     }
 
     @Test
+    fun `regex patterns inside string fields don't unbalance brace counting`() {
+        val tmp = Files.createTempDirectory("compare-strings-")
+        val a = tmp.resolve("a.jsonl")
+        val b = tmp.resolve("b.jsonl")
+        // Pattern field contains \\\\u007b (the JSON-escaped backslash + brace).
+        // A naive parser counts that brace and trips the array boundary.
+        a.writeText("""{"schema_version":1,"corpus":"X","source":"j2k","file":"x.kt","java_input":null,"compile":{"ok":true,"errors":[],"duration_ms":0},"metrics_regex":{"loc":1,"not_null_asserts":0,"anon_objects":0,"fun_interface":0,"const_val":0,"plain_val":0,"const_eligible_val":0,"throws_annotations":0,"inner_class":0,"vararg":0,"use_blocks":0},"hypotheses":[{"tag":"t1","passed":true,"should_match":true,"pattern":"\\.use\\s*\\{","expectation":"e","sample":".use {"},{"tag":"t2","passed":false,"should_match":true,"pattern":"\\bvararg\\s+\\w","expectation":"e","sample":null}]}
+        """.trimIndent() + "\n")
+        b.writeText("""{"schema_version":1,"corpus":"X","source":"claude","file":"x.kt","java_input":null,"compile":{"ok":true,"errors":[],"duration_ms":0},"metrics_regex":{"loc":1,"not_null_asserts":0,"anon_objects":0,"fun_interface":0,"const_val":0,"plain_val":0,"const_eligible_val":0,"throws_annotations":0,"inner_class":0,"vararg":0,"use_blocks":0},"hypotheses":[]}
+        """.trimIndent() + "\n")
+
+        val out = tmp.resolve("compare.md")
+        Compare.run(a, b, out)
+        val text = out.readText()
+        assertTrue("`x.kt` | yes | 1/2 |" in text, "should count both hypotheses (1 passed, 1 failed) -- saw: ${text.lines().joinToString("\n")}")
+    }
+
+    @Test
     fun `unmatched files surface as 'missing' on the side they're absent from`() {
         val tmp = Files.createTempDirectory("compare-miss-")
         val a = tmp.resolve("a.jsonl")

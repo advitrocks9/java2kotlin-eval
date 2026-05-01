@@ -138,24 +138,33 @@ object Compare {
         return m.groupValues[1] == "true"
     }
 
-    /** Returns each top-level object inside the named array as a raw string fragment. */
+    /**
+     * Returns each top-level object inside the named array as a raw string
+     * fragment. Quote-aware: brackets that appear inside a JSON string
+     * literal don't count toward depth tracking. Without this guard a
+     * regex pattern stored in a string field (e.g. `\\.use\\s*\\{`) would
+     * unbalance the depth counter.
+     */
     private fun pickArray(line: String, key: String): List<String> {
-        val start = line.indexOf("\"$key\"") .takeIf { it >= 0 } ?: return emptyList()
-        val open = line.indexOf('[', start) .takeIf { it >= 0 } ?: return emptyList()
+        val start = line.indexOf("\"$key\"").takeIf { it >= 0 } ?: return emptyList()
+        val open = line.indexOf('[', start).takeIf { it >= 0 } ?: return emptyList()
         var depthA = 1; var i = open + 1
         val items = mutableListOf<String>()
         var objStart = -1; var objDepth = 0
+        var inStr = false
         while (i < line.length && depthA > 0) {
             val c = line[i]
-            when (c) {
-                '[' -> depthA += 1
-                ']' -> {
-                    depthA -= 1
-                    if (depthA == 0 && objStart >= 0 && objDepth > 0) {
-                        // unterminated obj at array end (malformed input). bail.
-                        return items
-                    }
+            if (inStr) {
+                if (c == '\\' && i + 1 < line.length) {
+                    i += 2; continue
                 }
+                if (c == '"') inStr = false
+                i += 1; continue
+            }
+            when (c) {
+                '"' -> inStr = true
+                '[' -> depthA += 1
+                ']' -> depthA -= 1
                 '{' -> {
                     if (objDepth == 0) objStart = i
                     objDepth += 1
