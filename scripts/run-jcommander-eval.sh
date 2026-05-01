@@ -27,6 +27,16 @@ fi
 rm -rf "$CONVERTED"
 mkdir -p "$CONVERTED"
 
+# Wipe the IntelliJ sandbox before the runner pass. See note in
+# scripts/run-edge-cases.sh and docs/HEADLESS_J2K.md -- a warm sandbox
+# inherits coroutine state from the prior run and hangs on
+# preloadNonHeadlessServices.
+SANDBOX="${ROOT}/runner/build/idea-sandbox"
+if [[ -d "$SANDBOX" ]]; then
+  echo "[run] wiping warm sandbox at $SANDBOX"
+  rm -rf "$SANDBOX"
+fi
+
 echo "[run] invoking runner plugin"
 "${ROOT}/gradlew" :runner:runIde --args="j2k ${TARGET}/src/main/java ${CONVERTED}"
 
