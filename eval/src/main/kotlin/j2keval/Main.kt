@@ -23,8 +23,8 @@ fun main(args: Array<String>) {
             System.err.println("usage: j2keval fix-const-val <kt-dir>")
             exitProcess(2)
         }
-        val n = runConstValFix(Path.of(args[1]))
-        exitProcess(if (n > 0) 0 else 0)
+        runConstValFix(Path.of(args[1]))
+        exitProcess(0)
     }
     if (args.isNotEmpty() && args[0] == "compare") {
         if (args.size < 3) {
@@ -74,13 +74,35 @@ fun main(args: Array<String>) {
         BaselineDiff.compareCorpus(ktDir, baseRoot)
     }.orEmpty()
 
-    // Pair every .kt with its sibling .java if one exists; scan the .java
+    // Pair every .kt with its source .java if one exists; scan the .java
     // for input-side counts so the report can answer "did J2K miss any".
+    //
+    // Two ways to find the .java: (1) sibling at the same relpath under
+    // ktDir (newJ2k testData ships pairs like Foo.java + Foo.kt in one
+    // directory). (2) when --java-source-root=<path> is set, look up the
+    // .java by relpath under that root instead. The LLM corpus needs (2)
+    // because every .kt under fixtures/llm-claude-converted/ comes from
+    // edge-cases/<id>/Sample.java, not a sibling.
+    //
+    // For (2), llm fixtures use the convention `<id>.kt` <-> `edge-cases/
+    // <id>/Sample.java`. Try `<rel>.java` first (matches the runner's
+    // flat-stage shape), fall back to `<rel-without-ext>/Sample.java`.
     val javaScans: Map<Path, JavaMetrics> = ktFiles.mapNotNull { kt ->
-        val javaSibling = ktDir.resolve(ktDir.relativize(kt).toString().removeSuffix(".kt") + ".java")
-        if (!javaSibling.toFile().exists()) null else javaSibling.let {
-            JavaScan.scan(it)?.let { jm -> kt to jm }
+        val rel = ktDir.relativize(kt).toString().removeSuffix(".kt")
+        val javaPath: Path? = if (parsed.javaSourceRoot != null) {
+            val root = parsed.javaSourceRoot
+            val flat = root.resolve("$rel.java")
+            val nested = root.resolve(rel).resolve("Sample.java")
+            when {
+                flat.toFile().exists() -> flat
+                nested.toFile().exists() -> nested
+                else -> null
+            }
+        } else {
+            val sibling = ktDir.resolve("$rel.java")
+            if (sibling.toFile().exists()) sibling else null
         }
+        javaPath?.let { JavaScan.scan(it)?.let { jm -> kt to jm } }
     }.toMap()
 
     val report = Report.render(
@@ -152,10 +174,11 @@ private data class Args(
     val source: String,
     val jsonl: Path?,
     val baselineCorpus: Path?,
+    val javaSourceRoot: Path?,
 )
 
 private fun parseArgs(args: List<String>): Args {
-    val usage = "usage: j2keval <kt-dir> [<report-out>] [--expectations=<file>] [--isolated|--module] [--allow-compile-fails=<N>] [--source=<name>] [--jsonl=<path>] [--baseline-corpus=<path>]"
+    val usage = "usage: j2keval <kt-dir> [<report-out>] [--expectations=<file>] [--isolated|--module] [--allow-compile-fails=<N>] [--source=<name>] [--jsonl=<path>] [--baseline-corpus=<path>] [--java-source-root=<path>]"
     if (args.isEmpty()) { System.err.println(usage); exitProcess(2) }
 
     var report: Path? = null
@@ -165,6 +188,7 @@ private fun parseArgs(args: List<String>): Args {
     var source = "j2k"
     var jsonl: Path? = null
     var baselineCorpus: Path? = null
+    var javaSourceRoot: Path? = null
     val positional = mutableListOf<String>()
     for (a in args) {
         when {
@@ -177,6 +201,7 @@ private fun parseArgs(args: List<String>): Args {
             a.startsWith("--source=") -> source = a.removePrefix("--source=")
             a.startsWith("--jsonl=") -> jsonl = Path.of(a.removePrefix("--jsonl="))
             a.startsWith("--baseline-corpus=") -> baselineCorpus = Path.of(a.removePrefix("--baseline-corpus="))
+            a.startsWith("--java-source-root=") -> javaSourceRoot = Path.of(a.removePrefix("--java-source-root="))
             a.startsWith("--") -> { System.err.println("unknown flag: $a\n$usage"); exitProcess(2) }
             else -> positional += a
         }
@@ -184,7 +209,7 @@ private fun parseArgs(args: List<String>): Args {
     if (positional.isEmpty()) { System.err.println(usage); exitProcess(2) }
     val ktDir = Path.of(positional[0])
     if (positional.size >= 2) report = Path.of(positional[1])
-    return Args(ktDir, report, expectations, mode, allowCompileFails, source, jsonl, baselineCorpus)
+    return Args(ktDir, report, expectations, mode, allowCompileFails, source, jsonl, baselineCorpus, javaSourceRoot)
 }
 
 private fun buildSamples(
@@ -214,12 +239,14 @@ private fun buildSamples(
         val pm = psiByPath[f]
         val hs = hypothesesByKey[key].orEmpty()
         val expects = expectations[key].orEmpty()
-        val javaSibling = ktDir.resolve(key.removeSuffix(".kt") + ".java")
+        val javaScan = javaScans[f]
         SampleResult(
             corpus = corpus,
             source = source,
             file = key,
-            javaInput = if (javaSibling.toFile().exists()) ktDir.relativize(javaSibling).toString() else null,
+            // record the .java path the recall scan actually used. could be a
+            // sibling or a path under --java-source-root=<root>.
+            javaInput = javaScan?.file?.toString(),
             compile = CompileBlock(cr.ok, cr.errors, cr.durationMs),
             metricsRegex = MetricsRegexBlock(
                 loc = sm.locKotlin,
@@ -256,6 +283,7 @@ private fun buildSamples(
                     anonymousClassExprs = it.anonymousClassExprs,
                     staticFinalFields = it.staticFinalFields,
                     staticFinalLiteralFields = it.staticFinalLiteralFields,
+                    staticFinalConstExprFields = it.staticFinalConstExprFields,
                     varargParameters = it.varargParameters,
                     innerClassDecls = it.innerClassDecls,
                     singleAbstractMethodInterfaces = it.singleAbstractMethodInterfaces,
