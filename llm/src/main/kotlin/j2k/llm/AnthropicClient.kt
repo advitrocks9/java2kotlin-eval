@@ -53,20 +53,111 @@ class AnthropicClient(
 
     // response shape: {"content":[{"type":"text","text":"..."}, ...], ...}
     // long responses can split across multiple text blocks so concatenate
-    // them all. only scan inside content[] -- if a future field ever has a
-    // "text" key elsewhere we don't want it leaking in.
+    // them all. walks the top-level objects of content[] one by one and
+    // only picks up "text" from blocks whose "type" is literally "text" --
+    // a future tool_use block (which has its own nested "text" field
+    // inside "input") shouldn't leak in.
     // no JSON dep, the shape is stable enough that the regex walk holds up.
     // surrogate-pair \uHHHH not combined into a single code point; non-BMP
     // in kotlin source is rare and i'll fix it if it ever bites.
     private fun extractText(body: String): String {
         val contentArray = extractContentArray(body)
             ?: error("no content array in Anthropic response: $body")
-        val matches = Regex("""\"text\"\s*:\s*\"((?:\\.|[^"\\])*)\"""")
-            .findAll(contentArray)
-            .map { unescapeJsonStr(it.groupValues[1]) }
-            .toList()
-        if (matches.isEmpty()) error("no text blocks in content[]: $contentArray")
-        return matches.joinToString(separator = "")
+        val pieces = mutableListOf<String>()
+        for (block in topLevelObjects(contentArray)) {
+            // only look at the IMMEDIATE keys of this block, not nested ones.
+            // type and text are top-level scalars in the messages api shape;
+            // a regex against the full block fragment would also match nested
+            // {"input":{"text":"..."}} in tool_use blocks.
+            val type = topLevelStringField(block, "type") ?: continue
+            if (type != "text") continue
+            val text = topLevelStringField(block, "text") ?: continue
+            pieces += text
+        }
+        if (pieces.isEmpty()) error("no text blocks in content[]: $contentArray")
+        return pieces.joinToString(separator = "")
+    }
+
+    // split the inside of a JSON array into raw object fragments. quote- and
+    // depth-aware so nested objects/arrays don't get mistaken for top-level
+    // siblings.
+    private fun topLevelObjects(arrayBody: String): List<String> {
+        val out = mutableListOf<String>()
+        var depth = 0; var start = -1; var inStr = false; var i = 0
+        while (i < arrayBody.length) {
+            val c = arrayBody[i]
+            if (inStr) {
+                if (c == '\\' && i + 1 < arrayBody.length) { i += 2; continue }
+                if (c == '"') inStr = false
+                i += 1; continue
+            }
+            when (c) {
+                '"' -> inStr = true
+                '{', '[' -> { if (depth == 0 && c == '{') start = i; depth += 1 }
+                '}', ']' -> {
+                    depth -= 1
+                    if (depth == 0 && c == '}' && start >= 0) {
+                        out += arrayBody.substring(start, i + 1)
+                        start = -1
+                    }
+                }
+            }
+            i += 1
+        }
+        return out
+    }
+
+    // pull the value of a string field at the IMMEDIATE top level of an
+    // object body (walks the body, skips into nested objects/arrays without
+    // descending). when at depth 1 and we hit a `"`, parse a string -- if
+    // it's followed by `:` it's a key (compare to the target and either
+    // extract the value or skip), otherwise it's a value scalar so we just
+    // advance past it.
+    private fun topLevelStringField(objectBody: String, key: String): String? {
+        var depth = 0; var i = 0
+        while (i < objectBody.length) {
+            val c = objectBody[i]
+            when {
+                c == '"' -> {
+                    val end = scanStringEnd(objectBody, i + 1)
+                    if (end < 0) return null
+                    if (depth == 1) {
+                        val literal = objectBody.substring(i + 1, end)
+                        var j = end + 1
+                        while (j < objectBody.length && objectBody[j].isWhitespace()) j += 1
+                        val isKey = j < objectBody.length && objectBody[j] == ':'
+                        if (isKey && literal == key) {
+                            // found the key. step past `:` and grab the next
+                            // string value.
+                            var k = j + 1
+                            while (k < objectBody.length && objectBody[k].isWhitespace()) k += 1
+                            if (k >= objectBody.length || objectBody[k] != '"') return null
+                            val valueEnd = scanStringEnd(objectBody, k + 1)
+                            if (valueEnd < 0) return null
+                            return unescapeJsonStr(objectBody.substring(k + 1, valueEnd))
+                        }
+                    }
+                    i = end + 1; continue
+                }
+                c == '{' || c == '[' -> { depth += 1; i += 1 }
+                c == '}' || c == ']' -> { depth -= 1; i += 1 }
+                else -> i += 1
+            }
+        }
+        return null
+    }
+
+    // returns the index of the closing `"` of a JSON string starting at `from`
+    // (which is the first char AFTER the opening quote). -1 if unterminated.
+    private fun scanStringEnd(body: String, from: Int): Int {
+        var i = from
+        while (i < body.length) {
+            val c = body[i]
+            if (c == '\\' && i + 1 < body.length) { i += 2; continue }
+            if (c == '"') return i
+            i += 1
+        }
+        return -1
     }
 
     // pull out the substring between `"content":[` and its matching `]`.

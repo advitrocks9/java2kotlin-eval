@@ -36,10 +36,33 @@ class AnthropicClientTest {
 
     @Test
     fun `unrelated text fields outside content are ignored`() {
-        // Hypothetical future field with "text" outside content[]. Only
+        // hypothetical future field with "text" outside content[]. only
         // content[].text should contribute.
         val body = """{"content":[{"type":"text","text":"real"}],"meta":{"text":"should not appear"}}"""
         assertEquals("real", call(body))
+    }
+
+    @Test
+    fun `tool_use blocks with nested text in input are NOT treated as text`() {
+        // tool_use blocks have shape {"type":"tool_use","input":{"text":"..."}}
+        // -- the "text" key inside `input` is a tool argument, not output text.
+        // a naive regex over the whole content[] string would pull it in.
+        val body = """{"content":[
+            {"type":"text","text":"hello"},
+            {"type":"tool_use","id":"x","name":"foo","input":{"text":"DO_NOT_LEAK"}},
+            {"type":"text","text":" world"}
+        ]}"""
+        assertEquals("hello world", call(body), "tool_use input.text should never leak into the assistant response")
+    }
+
+    @Test
+    fun `non-text block types between text blocks are skipped, surrounding text concatenates`() {
+        val body = """{"content":[
+            {"type":"text","text":"a"},
+            {"type":"image","source":{"type":"base64","data":"ZGF0YQ=="}},
+            {"type":"text","text":"b"}
+        ]}"""
+        assertEquals("ab", call(body))
     }
 
     @Test
