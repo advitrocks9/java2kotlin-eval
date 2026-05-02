@@ -52,15 +52,39 @@ class Translator(
     }
 
     /**
-     * Models occasionally wrap output in ```kotlin / ``` fences despite
-     * being asked not to. Strip them; trim trailing blank lines.
+     * Recover Kotlin source from a model response that may have:
+     *   - markdown fences (```kotlin ... ```)
+     *   - a prose preamble before the fence ("Here is the translation:")
+     *   - both
+     *   - neither (clean Kotlin, the prompt's stated contract)
+     *
+     * Strategy: if a fence exists, return its contents. Otherwise scan for
+     * the first line that starts with a Kotlin top-level token (`package`,
+     * `import`, `class`, `object`, `interface`, `fun`, `enum`, an
+     * annotation, or a single-line comment) and drop everything before it.
+     * If nothing matches, return the trimmed input as-is and let kotlinc
+     * complain -- better to fail compile loudly than silently emit prose.
      */
     private fun stripWrappers(s: String): String {
-        var t = s.trim()
-        if (t.startsWith("```")) {
-            t = t.removePrefix("```kotlin").removePrefix("```")
-            t = t.removeSuffix("```").trim()
+        // 1. fence path: take what's inside the first ```...``` block.
+        val fenceStart = Regex("```(?:kotlin)?\\s*\n", RegexOption.IGNORE_CASE).find(s)
+        if (fenceStart != null) {
+            val afterOpen = s.substring(fenceStart.range.last + 1)
+            val close = afterOpen.indexOf("```")
+            if (close >= 0) {
+                return afterOpen.substring(0, close).trimEnd() + "\n"
+            }
         }
-        return t.trimEnd() + "\n"
+        // 2. prose-preamble path: skip lines until one looks like Kotlin code.
+        val kotlinStart = Regex(
+            "^(?:package |import |@|class |object |interface |fun |enum class |sealed |data class |abstract |open |internal |private |public |//|/\\*)"
+        )
+        val lines = s.lines()
+        val firstKotlinIdx = lines.indexOfFirst { kotlinStart.containsMatchIn(it.trimStart()) }
+        return if (firstKotlinIdx > 0) {
+            lines.drop(firstKotlinIdx).joinToString("\n").trimEnd() + "\n"
+        } else {
+            s.trim() + "\n"
+        }
     }
 }

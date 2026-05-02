@@ -3,6 +3,14 @@
 # eval over the captured Kotlin output. CI does not run this -- CI scores
 # committed fixtures under fixtures/llm-claude-converted/.
 #
+# PRIVACY NOTICE: this script POSTs the FULL CONTENTS of every .java file
+# under edge-cases/ to api.anthropic.com. Do NOT run it against proprietary,
+# confidential, or otherwise-sensitive source code unless your Anthropic
+# data handling agreement covers that traffic. The committed `edge-cases/`
+# corpus in this repo is hand-written sample code with no licensed
+# content; running on it is fine. Running on a JCommander clone or a
+# real codebase under target/ would ship that source upstream.
+#
 # Usage:
 #   ANTHROPIC_API_KEY=sk-... bash scripts/run-llm-eval.sh
 #

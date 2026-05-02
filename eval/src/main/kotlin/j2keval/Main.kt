@@ -261,6 +261,7 @@ private fun buildSamples(
             metricsJava = javaScans[f]?.let {
                 MetricsJavaBlock(
                     loc = it.locJava,
+                    parseFailed = it.parseFailed,
                     tryWithResourceCount = it.tryWithResourceCount,
                     resourceCount = it.resourceCount,
                     anonymousClassExprs = it.anonymousClassExprs,

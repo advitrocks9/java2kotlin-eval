@@ -7,6 +7,11 @@ import kotlin.system.exitProcess
  * Local-only entry point. Translates a directory of .java files to .kt files
  * via the Anthropic API, writes them to outputDir mirroring relative path.
  *
+ * PRIVACY NOTICE: every .java file under inputDir is POSTed in full to
+ * api.anthropic.com. Do NOT point this at proprietary, confidential, or
+ * licensed source unless your Anthropic data handling agreement covers
+ * that traffic.
+ *
  * Skips files already present in outputDir unless --overwrite is given.
  * That makes "run, run again after fixing one bad output" cheap; the
  * existing successful translations don't pay another API call.

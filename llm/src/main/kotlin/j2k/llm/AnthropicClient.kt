@@ -58,17 +58,52 @@ class AnthropicClient(
     }
 
     /**
-     * Pull the `text` field out of the first content block. The Messages
-     * API response shape is:
+     * Pull all `text` fields out of the response's content blocks and
+     * concatenate them. The Messages API response shape is:
      *   {"content":[{"type":"text","text":"..."}, ...], ...}
-     * For our use case (one user message in, one text block out) this
-     * regex is enough; if a future model returns multiple blocks we'd
-     * need a real JSON parser. Worth flagging.
+     * Long responses can split across multiple text blocks. We scan only
+     * inside the `content:[...]` array so unrelated `"text"` fields
+     * (none today, but future-proofing) can't pollute the output.
+     *
+     * No JSON dep -- the response shape is small and stable, the regex
+     * walk is quote-aware enough for the strings we hit. Surrogate-pair
+     * \\uHHHH escapes aren't combined into a single code point; non-BMP
+     * characters in Kotlin source are rare enough to defer.
      */
     private fun extractText(body: String): String {
-        val m = Regex("""\"text\"\s*:\s*\"((?:\\.|[^"\\])*)\"""").find(body)
-            ?: error("no text field in Anthropic response: $body")
-        return unescapeJsonStr(m.groupValues[1])
+        val contentArray = extractContentArray(body)
+            ?: error("no content array in Anthropic response: $body")
+        val matches = Regex("""\"text\"\s*:\s*\"((?:\\.|[^"\\])*)\"""")
+            .findAll(contentArray)
+            .map { unescapeJsonStr(it.groupValues[1]) }
+            .toList()
+        if (matches.isEmpty()) error("no text blocks in content[]: $contentArray")
+        return matches.joinToString(separator = "")
+    }
+
+    /** Returns the substring between `"content":[` and its matching `]`,
+     *  quote-aware so brackets inside string literals don't break the
+     *  bracket-counting. Same shape as Compare.kt's pickArray. */
+    private fun extractContentArray(body: String): String? {
+        val keyIdx = body.indexOf("\"content\"").takeIf { it >= 0 } ?: return null
+        val open = body.indexOf('[', keyIdx).takeIf { it >= 0 } ?: return null
+        var depth = 1; var i = open + 1; var inStr = false
+        while (i < body.length && depth > 0) {
+            val c = body[i]
+            if (inStr) {
+                if (c == '\\' && i + 1 < body.length) { i += 2; continue }
+                if (c == '"') inStr = false
+                i += 1; continue
+            }
+            when (c) {
+                '"' -> inStr = true
+                '[' -> depth += 1
+                ']' -> depth -= 1
+            }
+            if (depth == 0) return body.substring(open + 1, i)
+            i += 1
+        }
+        return null
     }
 
     private fun jsonStr(s: String): String = buildString(s.length) {

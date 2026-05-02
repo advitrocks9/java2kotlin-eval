@@ -57,4 +57,38 @@ class TranslatorTest {
         val written = output.resolve("a.kt").readText()
         assertEquals("class A\n", written, "fences should be stripped, trailing newline preserved")
     }
+
+    @Test
+    fun `prose preamble before kotlin code is stripped`() {
+        val tmp = Files.createTempDirectory("llm-prose-")
+        val input = tmp.resolve("in").also { it.toFile().mkdirs() }
+        val output = tmp.resolve("out").also { it.toFile().mkdirs() }
+        input.resolve("a.java").writeText("class A {}\n")
+
+        // Model occasionally adds a prose preamble despite the system prompt.
+        // Without the guard, the prose lands in the .kt and kotlinc dies.
+        val tx = Translator(complete = { _, _ ->
+            "Here's the Kotlin translation:\n\nThe class is straightforward.\n\npackage com.example\n\nclass A\n"
+        })
+        tx.translateCorpus(input, output)
+
+        val written = output.resolve("a.kt").readText()
+        assertEquals("package com.example\n\nclass A\n", written)
+    }
+
+    @Test
+    fun `prose preamble plus fences both stripped`() {
+        val tmp = Files.createTempDirectory("llm-prose-fence-")
+        val input = tmp.resolve("in").also { it.toFile().mkdirs() }
+        val output = tmp.resolve("out").also { it.toFile().mkdirs() }
+        input.resolve("a.java").writeText("class A {}\n")
+
+        val tx = Translator(complete = { _, _ ->
+            "Here you go:\n\n```kotlin\npackage com.example\n\nclass A\n```\n"
+        })
+        tx.translateCorpus(input, output)
+
+        val written = output.resolve("a.kt").readText()
+        assertEquals("package com.example\n\nclass A\n", written)
+    }
 }
