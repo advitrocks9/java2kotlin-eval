@@ -103,25 +103,30 @@ class Sample {
 ```
 
 `Runnable` is a SAM, the body is one method, the body has no
-self-reference. This *should* lift to `Runnable { println("hook fired") }`
+self-reference. This *could* lift to `Runnable { println("hook fired") }`
 -- the kind of thing the IDE's intention "Convert anonymous object to
 lambda" does interactively. The `FunctionalInterfacesConversion` pass
-fires for the easy cases (see findings 4 + 5 below) but not for the
-field-initialiser case. Whether that's a J2K bug or a deliberate
-under-promotion to keep field-initialisation order obvious -- open
-question.
+in J2K fires on the lambda-receiver side only when the target type is
+already declared `fun interface` (case 4 below shows the lift is gated
+on `@FunctionalInterface` on the Java source). `Runnable` from
+`java.lang` was not marked `@FunctionalInterface` until Java 8
+introduced the annotation, but `java.lang.Runnable` is annotated. So
+the surprise here is that J2K still doesn't lift the field initializer
+even when the target *is* a SAM-eligible type. Whether that's a J2K
+bug or a deliberate under-promotion to keep field-initialisation order
+obvious -- open question.
 
 The other interesting bit: the return type of `get()` came out as
 `Runnable?`. The Java field is `final` and assigned at declaration; it
 is never null. J2K's nullability inferrer over-conserves at the API
 surface here.
 
-## 4. SAM interface gets `fun interface`, even without the annotation
+## 4. `fun interface` only fires when `@FunctionalInterface` is on the Java source
 
-**Java** (`fixtures/newj2k/functionalInterfaces/NoFunctionalInterfaceAnnotation.java`):
+**Java** (`fixtures/newj2k/functionalInterfaces/NoFunctionalInterfaceAnnotation/NoFunctionalInterfaceAnnotation.java`):
 
 ```java
-interface Foo {
+public interface MyRunnable {
     void run();
 }
 ```
@@ -129,15 +134,39 @@ interface Foo {
 **Authentic J2K output**:
 
 ```kotlin
-internal fun interface Foo {
+interface MyRunnable {
     fun run()
 }
 ```
 
-`@FunctionalInterface` is not present on the source, but J2K still
-detects "single abstract method" and emits `fun interface`. The
-hypothesis I wrote down -- "J2K only does this on annotated SAMs" --
-turned out to be wrong.
+Plain `interface`. No `fun` keyword. The companion fixture
+(`functionalInterfaces/MyRunnable/`) is byte-for-byte the same Java
+source plus a `@FunctionalInterface` annotation; that one converts to
+`fun interface MyRunnable { fun run() }`. So the rule J2K's
+`FunctionalInterfacesConversion` follows is "lift only when the
+annotation is present", not "lift any single-abstract-method shape."
+
+Two expectations encode this in `fixtures/newj2k/expectations.txt`:
+
+```
+functionalInterfaces/MyRunnable/MyRunnable.kt
+    | fun_interface_promoted | yes | fun interface MyRunnable
+functionalInterfaces/NoFunctionalInterfaceAnnotation/NoFunctionalInterfaceAnnotation.kt
+    | fun_interface_NOT_promoted_without_annotation | no | fun\s+interface
+```
+
+The `no` row is doing the real work. If a future J2K bump starts
+lifting unannotated SAMs, the eval prints the regex match and exits 3.
+
+Why this is sound: every `interface` in Java with one abstract method
+is technically a SAM, but Java callers can pass `new Foo() { ... }`
+anonymous-class instances. Lifting to `fun interface` would change the
+observable Kotlin API for downstream Java callers -- you can no longer
+pass an arbitrary subclass instance where a `fun interface` is
+expected, the call site coerces lambda literals only. The annotation
+is the source author's signal that the type is meant for lambda use,
+and J2K respects that signal. I had this case the other way around in
+an earlier draft of the doc; the executable check is what caught it.
 
 ## 5. Try-with-resources to `.use {}`, including the multi-resource case
 
