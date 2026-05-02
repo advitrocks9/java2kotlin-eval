@@ -14,7 +14,7 @@ import java.time.Duration
 class AnthropicClient(
     private val apiKey: String = System.getenv("ANTHROPIC_API_KEY")
         ?: error("ANTHROPIC_API_KEY not set. This module is local-only; CI evaluates committed fixtures."),
-    private val model: String = "claude-sonnet-4-6",
+    private val model: String = "claude-sonnet-4-5",
     private val maxTokens: Int = 4096,
 ) {
     private val http: HttpClient = HttpClient.newBuilder()

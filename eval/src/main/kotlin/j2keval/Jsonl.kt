@@ -14,7 +14,7 @@ import java.nio.file.Path
 data class SampleResult(
     val schemaVersion: Int = SCHEMA_VERSION,
     val corpus: String,
-    val source: String,                    // "j2k", "claude-sonnet-4-6", "gpt-5", ...
+    val source: String,                    // "j2k", "claude-sonnet-4-5", "gpt-5", ...
     val file: String,                      // relpath under corpus
     val javaInput: String?,                // relpath of paired .java if any
     val compile: CompileBlock,
@@ -37,6 +37,7 @@ data class MetricsJavaBlock(
     val anonymousClassExprs: Int,
     val staticFinalFields: Int,
     val staticFinalLiteralFields: Int,
+    val staticFinalConstExprFields: Int,
     val varargParameters: Int,
     val innerClassDecls: Int,
     val singleAbstractMethodInterfaces: Int,
@@ -156,6 +157,7 @@ object Jsonl {
                     kv("anonymous_class_exprs", anonymousClassExprs)
                     kv("static_final_fields", staticFinalFields)
                     kv("static_final_literal_fields", staticFinalLiteralFields)
+                    kv("static_final_const_expr_fields", staticFinalConstExprFields)
                     kv("vararg_parameters", varargParameters)
                     kv("inner_class_decls", innerClassDecls)
                     kv("single_abstract_method_interfaces", singleAbstractMethodInterfaces)

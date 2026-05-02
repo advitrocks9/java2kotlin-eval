@@ -1,5 +1,5 @@
 # hypothesis checks for fixtures/llm-claude-converted -- 15 .kt files
-# captured from Claude Sonnet 4.6 over the edge-cases/ java corpus. each
+# captured from Claude Sonnet 4.5 over the edge-cases/ java corpus. each
 # line is a behavior i actually observed; a future capture (different
 # model, different prompt) that violates one of these will fail CI.
 #
@@ -28,7 +28,7 @@
 06_instanceof_pattern.kt | smart_cast_inversion | yes | if\s*\(o\s*!is\s+Int\) | LLM inverted negative instanceof to !is to fit smart-cast scope
 
 # h.07 try-with-resources. both converters do the .use {} thing. claude
-# additionally drops the over-conservative nullable params -- the source had
+# also drops the over-conservative nullable params -- the source had
 # non-null parameters; static j2k marks them String? out of caution.
 07_try_with_resources.kt | use_block             | yes | \.use\s*\{                    | try-with-resources -> .use{}
 07_try_with_resources.kt | not_overconservative_nullable | no  | fun readOne\(path: String\?\) | LLM did NOT mark non-null param as nullable

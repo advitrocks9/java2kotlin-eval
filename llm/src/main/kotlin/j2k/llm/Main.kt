@@ -25,7 +25,7 @@ fun main(args: Array<String>) {
     }
     val inputDir = Path.of(args[0])
     val outputDir = Path.of(args[1])
-    var model = "claude-sonnet-4-6"
+    var model = "claude-sonnet-4-5"
     var overwrite = false
     for (a in args.drop(2)) {
         when {

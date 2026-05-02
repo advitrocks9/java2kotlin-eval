@@ -6,7 +6,7 @@ import java.nio.file.Path
 // joins two JSONL result files on `file` (relpath within each corpus) and
 // emits a side-by-side report. concrete use here: i run the eval once on
 // fixtures/edge-converted/ (--source=j2k) and once on
-// fixtures/llm-claude-converted/ (--source=claude-sonnet-4-6); both are
+// fixtures/llm-claude-converted/ (--source=claude-sonnet-4-5); both are
 // translations of the same edge-cases/ java. compare answers per-case
 // which one compiled, who passed hypotheses, who didn't.
 //
