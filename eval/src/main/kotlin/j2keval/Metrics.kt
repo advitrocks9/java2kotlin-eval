@@ -31,7 +31,6 @@ data class StructuralMetrics(
     val innerClass: Int,               // `inner class`
     val varargParams: Int,             // `vararg `
     val useBlocks: Int,                // try-with-resources -> .use { }
-    val platformTypeHints: Int,        // " : T! ..." -- IntelliJ doesn't actually emit `!`, but we look for the kdoc convention `// platform type` it inserts
 )
 
 data class HypothesisCheck(
@@ -54,11 +53,21 @@ object Metrics {
     private val vararg_ = Regex("""\bvararg\s+\w""")
     private val useBlock = Regex("""\.use\s*\{""")
     private val throwsAnno = Regex("""@Throws\s*\(""")
-    private val platformHint = Regex("""\s*//\s*platform type""")
 
     // RHS of a `val NAME = LITERAL` where LITERAL is a primitive or string literal.
+    // also accepts hex (0xff), binary (0b101), char ('\n'), exp-form (1e9), and
+    // the same set of visibility modifiers ConstValFix accepts.
     private val constEligibleVal = Regex(
-        """\bval\s+\w+\s*(?::\s*[\w<>?]+)?\s*=\s*(?:"[^"]*"|-?\d[\d_]*[LfFdD]?|true|false|'[^']'|\d*\.\d+[fFdD]?)\s*$""",
+        """^\s*(?:(?:private|internal|public)\s+)?val\s+\w+\s*(?::\s*[\w<>?]+)?\s*=\s*(?:""" +
+            // string with no template
+            """"[^"\\$]*"|""" +
+            // numeric: hex / binary / decimal with optional exp / suffix
+            """-?(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+\-]?\d+)?)[LlFfDdUu]*|""" +
+            // bool
+            """true|false|""" +
+            // char (one regular char, or one escape)
+            """'(?:\\[btnr'"\\]|[^'\\])'""" +
+            """)\s*(?://.*)?$""",
         RegexOption.MULTILINE
     )
 
@@ -67,14 +76,20 @@ object Metrics {
         val loc = text.count { it == '\n' } + 1
         val constMatches = constVal.findAll(text).count()
         val plainMatches = plainVal.findAll(text).count()
-        val constEligible = constEligibleVal.findAll(text)
-            .filter { match ->
-                // exclude the ones already declared `const` -- look back ~10 chars for `const`
-                val start = match.range.first
-                val window = text.substring((start - 12).coerceAtLeast(0), start)
-                "const" !in window
+        // count const-eligible vals only when they sit in a promotable scope
+        // (top-level, `object` body, or `companion object` body). a `val x = 1`
+        // in a method body or regular class body is not const-eligible no
+        // matter what its RHS shape is, so counting it inflates the metric.
+        // ConstValFix.computeScopeKind is the source of truth for what counts
+        // as promotable.
+        val lines = text.lines()
+        val scope = ConstValFix.scopeKindForLines(lines)
+        val constEligible = lines.withIndex()
+            .filter { (idx, _) -> scope[idx] == ConstValFix.ScopeKind.PROMOTABLE }
+            .count { (_, line) ->
+                if (line.trimStart().startsWith("const ")) return@count false
+                constEligibleVal.matchEntire(line) != null
             }
-            .count()
         return StructuralMetrics(
             file = file,
             locKotlin = loc,
@@ -88,7 +103,6 @@ object Metrics {
             innerClass = innerClass.findAll(text).count(),
             varargParams = vararg_.findAll(text).count(),
             useBlocks = useBlock.findAll(text).count(),
-            platformTypeHints = platformHint.findAll(text).count(),
         )
     }
 

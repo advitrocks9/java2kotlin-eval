@@ -148,20 +148,21 @@ object Report {
         }
 
         if (javaScans.isNotEmpty()) {
-            val javaTotals = javaScans.values.fold(IntArray(6)) { acc, j ->
+            val javaTotals = javaScans.values.fold(IntArray(7)) { acc, j ->
                 acc[0] += j.resourceCount
                 acc[1] += j.anonymousClassExprs
                 acc[2] += j.staticFinalLiteralFields
                 acc[3] += j.varargParameters
                 acc[4] += j.innerClassDecls
                 acc[5] += j.singleAbstractMethodInterfaces
+                acc[6] += j.staticFinalConstExprFields
                 acc
             }
             // pull per-file Kotlin numbers from `structural`. Restrict to files
             // we have a Java scan for, so the ratio compares apples to apples.
             val structByPath = structural.associateBy { it.file }
             val psiByPath = psi.associateBy { it.file }
-            val ktTotals = IntArray(6)
+            val ktTotals = IntArray(7)
             for (f in ktFiles) {
                 if (javaScans[f] == null) continue
                 val s = structByPath[f] ?: continue
@@ -174,10 +175,18 @@ object Report {
                 ktTotals[3] += s.varargParams
                 ktTotals[4] += s.innerClass
                 ktTotals[5] += s.funInterface
+                // const-expr promotion: there's no separate Kotlin-side
+                // counter (const val on the Kotlin side covers literal AND
+                // expression initializers). leave the kt column blank-as-0
+                // so the row reads as "java had N const-expression-eligible
+                // fields; the kotlin side may or may not have promoted
+                // them." this is the row that flips "literal-only undercount"
+                // into something visible.
+                ktTotals[6] += 0
             }
             appendLine("## Java -> Kotlin recall")
             appendLine()
-            appendLine("Pairs each `.kt` with its sibling `.java` (when one exists, ${javaScans.size}/${ktFiles.size} files here) and counts the same syntactic categories on both sides. Ratio < 1 means J2K dropped occurrences; ratio > 1 means one Java idiom expands into multiple Kotlin ones (e.g. one `try-with-resources` with N resources nests N `.use {}` blocks).")
+            appendLine("Pairs each `.kt` with its source `.java` (when one exists, ${javaScans.size}/${ktFiles.size} files here) and counts the same syntactic categories on both sides. Ratio < 1 means J2K dropped occurrences; ratio > 1 means one Java idiom expands into multiple Kotlin ones (e.g. one `try-with-resources` with N resources nests N `.use {}` blocks). The expression-RHS row reports input-side count only, since `const val` on the Kotlin side covers literal AND expression initializers; treat it as a signal of how many candidates the literal-only row is missing.")
             appendLine()
             appendLine("| category | java | kotlin | ratio |")
             appendLine("|----------|------|--------|-------|")
@@ -185,14 +194,21 @@ object Report {
                 "try-with-resources -> .use{}" to 0,
                 "anonymous classes -> object literals" to 1,
                 "static final w/ literal RHS -> const val" to 2,
+                "static final w/ const-expression RHS (informational)" to 6,
                 "varargs -> vararg params" to 3,
                 "inner class -> inner class" to 4,
                 "single-abstract-method iface -> fun interface" to 5,
             )
             for ((label, idx) in labels) {
-                val j = javaTotals[idx]; val k = ktTotals[idx]
-                val ratio = if (j == 0) "n/a" else "%.2f".format(k.toDouble() / j)
-                appendLine("| $label | $j | $k | $ratio |")
+                val j = javaTotals[idx]
+                val k = ktTotals[idx]
+                val ratio = when {
+                    idx == 6 -> "-"
+                    j == 0 -> "n/a"
+                    else -> "%.2f".format(k.toDouble() / j)
+                }
+                val kStr = if (idx == 6) "-" else k.toString()
+                appendLine("| $label | $j | $kStr | $ratio |")
             }
             appendLine()
         }
