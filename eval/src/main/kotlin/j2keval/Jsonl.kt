@@ -2,20 +2,15 @@ package j2keval
 
 import java.nio.file.Path
 
-/**
- * Per-sample structured result. One of these per .kt file scored. Serialized
- * as JSONL (one object per line) so downstream tools -- multi-agent
- * benchmarking dashboards, RL dataset extraction, anything that needs to
- * diff "Claude vs J2K vs GPT-5 on the same Java input" -- can join on
- * `(corpus, source, file)` without re-parsing markdown.
- *
- * Schema is intentionally permissive (a lot of nullable fields). The eval
- * doesn't always have everything: a corpus might be Kotlin-only with no
- * paired Java input, hypothesis checks are opt-in via --expectations=.
- *
- * Bump `SCHEMA_VERSION` whenever a field changes meaning. Adding optional
- * fields doesn't require a bump.
- */
+// one record per .kt file scored. JSONL because i wanted something a
+// downstream script could grep without parsing the markdown report.
+// joinable on (corpus, source, file) so two runs over the same corpus
+// (e.g. j2k vs claude on edge-cases) can be diffed line by line.
+//
+// most fields are nullable -- not every corpus has a paired .java, not
+// every run has --expectations or --baseline-corpus.
+// bump SCHEMA_VERSION on a breaking change. adding new optional fields
+// doesn't count.
 data class SampleResult(
     val schemaVersion: Int = SCHEMA_VERSION,
     val corpus: String,

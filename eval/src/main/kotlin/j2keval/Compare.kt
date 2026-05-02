@@ -3,27 +3,17 @@ package j2keval
 import java.nio.file.Files
 import java.nio.file.Path
 
-/**
- * Joins two JSONL result files and produces a side-by-side comparison
- * report. Pairs records on `file` (relative path within each corpus).
- *
- * Use case: I run the eval once over `fixtures/edge-converted/` (the
- * static J2K output, --source=j2k) and once over
- * `fixtures/llm-claude-converted/` (the LLM translation,
- * --source=claude-sonnet-4-6). Both corpora translate the same Java
- * inputs (the edge-cases/ folder, flattened). The compare subcommand
- * answers: per case, which one compiled, which one passed hypotheses,
- * how do their structural metrics line up.
- *
- * This is the bones of a multi-agent benchmarking dashboard. The full
- * version (model-vs-model leaderboard, per-category breakdowns, etc.)
- * lives outside this submission's scope, but the schema and join logic
- * are here for it.
- *
- * Parses JSONL with a hand-rolled minimal reader -- only reads the
- * fields the comparison cares about, ignores the rest. A future shape
- * change to the schema (adding fields) doesn't break this.
- */
+// joins two JSONL result files on `file` (relpath within each corpus) and
+// emits a side-by-side report. concrete use here: i run the eval once on
+// fixtures/edge-converted/ (--source=j2k) and once on
+// fixtures/llm-claude-converted/ (--source=claude-sonnet-4-6); both are
+// translations of the same edge-cases/ java. compare answers per-case
+// which one compiled, who passed hypotheses, who didn't.
+//
+// only reads the fields the comparison needs (file, source, compile.ok,
+// hypotheses[].passed) so adding new schema fields later doesn't break
+// it. enough infra to plug a third source (gpt-5, gemini, whatever) in
+// without rewriting the join.
 object Compare {
 
     fun run(aPath: Path, bPath: Path, outPath: Path?) {
@@ -138,13 +128,11 @@ object Compare {
         return m.groupValues[1] == "true"
     }
 
-    /**
-     * Returns each top-level object inside the named array as a raw string
-     * fragment. Quote-aware: brackets that appear inside a JSON string
-     * literal don't count toward depth tracking. Without this guard a
-     * regex pattern stored in a string field (e.g. `\\.use\\s*\\{`) would
-     * unbalance the depth counter.
-     */
+    // returns each top-level object inside the named array as a raw string
+    // fragment. quote-aware so brackets inside string literals don't count
+    // toward depth -- without this a regex pattern stored as a string field
+    // (e.g. `\\.use\\s*\\{`) trips the depth counter and the parser silently
+    // clips the array.
     private fun pickArray(line: String, key: String): List<String> {
         val start = line.indexOf("\"$key\"").takeIf { it >= 0 } ?: return emptyList()
         val open = line.indexOf('[', start).takeIf { it >= 0 } ?: return emptyList()

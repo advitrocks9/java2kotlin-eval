@@ -5,13 +5,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-/**
- * Tests the response-parsing seam without touching the network. The
- * extractText path is reached via the public complete() only when wired
- * to a real HTTP call, so we test the parser by reflecting in via a
- * helper. AnthropicClient is constructed with a fake key so the no-key
- * error doesn't fire.
- */
+// tests for the response-parsing seam without hitting the network.
+// extractText is private and only reachable via complete() over a real
+// HTTP call, so we reflect in. fake api key just to dodge the no-key
+// error in the constructor.
 class AnthropicClientTest {
 
     private val client = AnthropicClient(apiKey = "fake")

@@ -1,16 +1,16 @@
 # fixtures/llm-claude-converted/
 
-Captured Kotlin output from translating the `edge-cases/` Java corpus via
-the Anthropic Messages API (Claude Sonnet 4.6, `llm/` module). Each `.kt`
-mirrors a single `edge-cases/<id>/Sample.java`, flattened to
-`<id>.kt` so the file layout matches `fixtures/edge-converted/` and
-`--baseline-corpus=fixtures/edge-converted` produces a clean side-by-side
-diff.
+captured kotlin output from running the `edge-cases/` java corpus through
+Claude Sonnet 4.6 via the anthropic messages api (`llm/` module). each
+`.kt` here corresponds to one `edge-cases/<id>/Sample.java`, flattened to
+`<id>.kt` so the layout matches `fixtures/edge-converted/` and the
+`--baseline-corpus=fixtures/edge-converted` flag gives a clean side-by-
+side diff.
 
-The LLM call is local-only. CI never invokes the API:
+local-only -- CI never calls the api:
 - locally: `ANTHROPIC_API_KEY=sk-... bash scripts/run-llm-eval.sh`
 - CI: scores whatever .kt files are committed here
 
-When this directory is empty the eval CI job for it is a no-op; the
-runner-builds + newj2k cross-check + edge-fixtures-eval jobs cover the
-critical path on their own.
+if this directory is empty the llm-leg-eval CI job is a no-op. the
+other CI jobs (runner-builds + newj2k-cross-check + edge-fixtures-eval)
+cover the critical path on their own.

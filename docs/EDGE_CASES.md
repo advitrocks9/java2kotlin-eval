@@ -50,13 +50,12 @@ what J2K produces today, locked in by JetBrains' own tests.
 | variance | projections | projections |
 | field_init | field | nonConstInitializer |
 
-## Hypothesis checks
+## hypothesis checks
 
-Each claim above has a one-line falsifiable assertion in
-`fixtures/<corpus>/expectations.txt`. The eval reads them via
-`--expectations=<path>` and emits a "Hypothesis checks" table in the
-generated report. A failing check exits the eval with code 3, so CI catches
-regressions in J2K behavior we depended on.
+each claim above has a one-line falsifiable assertion in
+`fixtures/<corpus>/expectations.txt`. eval reads it via `--expectations=<path>`
+and emits a Hypothesis checks table in the report; a fail exits the eval
+with code 3 so CI catches behavior regressions.
 
 ```
 fixtures/edge-converted/expectations.txt        -- 8 checks across 4 files (static J2K via runner)
@@ -64,17 +63,12 @@ fixtures/newj2k/expectations.txt                -- 11 checks across 10 files (Je
 fixtures/llm-claude-converted/expectations.txt  -- 12 checks across 6 files (Claude Sonnet 4.6)
 ```
 
-The Claude expectations are deliberately distinct from the static-J2K
-ones: the two converters disagree on several cases (anon-object lift,
-companion-vs-top-level for utility classes, const-eligibility of
-String + computed-expression literals). Encoding both lets the eval
-catch drift on either side independently. The
-`reports/llm-claude.md` "Baseline diff" section shows the
-side-by-side hunks.
-
-The two corpora carry independent expectation files because their .kt
-contents come from different J2K invocations (committed runner output vs.
-intellij-community testData baseline at a pinned commit).
+three separate files because the converters disagree on several cases
+(anon-object lift, companion-vs-top-level for utility classes,
+const-eligibility for string + computed-expression literals). encoding
+each side's actual behavior independently means the eval catches drift
+on either side without false positives. baseline-diff hunks in
+`reports/llm-claude.md` show the side-by-side.
 
 ## Eval result on this corpus
 
@@ -102,13 +96,13 @@ lives in a sibling fixture file the official tests inject. Not a J2K bug.
 **Landed (J2K handles these well):**
 
 - *SAM lambda recovery* (h.01) when annotated. `MyRunnable.kt` becomes
-  `fun interface MyRunnable { fun run() }`. The unannotated case
-  (`NoFunctionalInterfaceAnnotation`) stays a plain `interface` -- J2K only
-  fires the `fun interface` lift when the source carried `@FunctionalInterface`.
-  My initial read of the eval output got this backwards; the expectation
-  `fun_interface_NOT_promoted_without_annotation` in
-  `fixtures/newj2k/expectations.txt` is the executable check that pinned
-  the actual behavior.
+  `fun interface MyRunnable { fun run() }`. the unannotated case
+  (`NoFunctionalInterfaceAnnotation`) stays a plain `interface` -- j2k
+  only fires the `fun interface` lift when the source actually carried
+  `@FunctionalInterface`. i had this backwards in an earlier pass of the
+  doc; the `fun_interface_NOT_promoted_without_annotation` expectation in
+  `fixtures/newj2k/expectations.txt` is the executable check that
+  catches it now.
 - *Try-with-resources* (h.07). Single-resource and multi-resource both
   convert to `.use {}`. Multi-resource nests them. Three `.use {}` blocks
   across the two fixtures.

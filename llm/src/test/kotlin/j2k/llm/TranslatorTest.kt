@@ -7,11 +7,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * No live API in tests -- tests run in CI and we don't want to leak keys
- * or pay per-PR. Stub the client and verify Translator's file-walking,
- * output-mirroring, and skip-existing logic against it.
- */
+// no live api in tests. stub the complete fn directly via the function-
+// injected ctor and verify file walking, output mirroring, skip-existing.
 class TranslatorTest {
 
     @Test
