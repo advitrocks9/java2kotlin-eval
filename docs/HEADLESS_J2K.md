@@ -55,7 +55,7 @@ That's the same code path the IDE menu invokes, but it enters
 that never arrives in headless. I let it run for 11 minutes before
 killing it.
 
-The minimum recipe in code:
+The minimum sequence in code:
 
 ```kotlin
 val project = ProjectManagerEx.getInstanceEx()
@@ -186,6 +186,6 @@ Three things, all in the README's headline:
    (with logs) seemed worth more than papering over it.
 
 A senior reviewer who wants to fix the hang has the captured stack
-trace and the recipe to reproduce -- the headless-j2k-cancel-tail.txt
+trace and the steps to reproduce -- the headless-j2k-cancel-tail.txt
 plus `runner/src/main/kotlin/j2k/runner/J2KStarter.kt` is everything
 needed.
