@@ -9,12 +9,15 @@ PLAN.md
 notes/
 local.properties
 .kotlin/
-# CI clones the target Java repo on the fly; don't vendor it.
-target/jcommander/
+# target/ is build artefacts only. don't vendor jcommander, intermediate
+# .class files, or run-time conversion output -- they belong under
+# fixtures/ if we want to commit them.
+target/
 generated/
 .cache/
 .intellijPlatform/
 SUBMISSION.md
-# Eval reports are generated artifacts (uploaded as CI artifacts every run);
-# committing them would cause merge churn on every push.
-reports/
+# Eval reports get committed so README headlines are reproducible at SHA.
+# Regenerate with `./gradlew :eval:run --args=...` (CI uploads them as
+# artifacts too).
+!reports/

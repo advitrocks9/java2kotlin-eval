@@ -68,7 +68,7 @@ jobs:
       # Eval runs over the committed runner output. Runs the const-val
       # post-processor and re-evals to show the metric delta. The first
       # invocation carries --expectations=; the post-fix invocation does not,
-      # because some hypotheses (notably string_const_NOT_promoted) test the
+      # because some hypotheses (string_const_NOT_promoted in particular) test the
       # pre-fix gap and would flip after ConstValFix mutates the file.
       - run: ./gradlew :eval:run --args="fixtures/edge-converted reports/edge-raw.md --expectations=fixtures/edge-converted/expectations.txt"
       - run: ./gradlew :eval:run --args="fix-const-val fixtures/edge-converted"
@@ -112,7 +112,7 @@ jobs:
           fi
       - if: steps.detect.outputs.have_fixtures == '1'
         run: ./gradlew :eval:run --args="fixtures/llm-claude-converted reports/llm-claude.md
-          --source=claude-sonnet-4-6
+          --source=claude-sonnet-4-5
           --baseline-corpus=fixtures/edge-converted
           --expectations=fixtures/llm-claude-converted/expectations.txt"
       - if: steps.detect.outputs.have_fixtures == '1'
