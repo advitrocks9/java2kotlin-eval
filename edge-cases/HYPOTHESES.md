@@ -12,7 +12,7 @@ through J2K.
 | 01 | `01_anonymous_runnable/Sample.java` | SAM lambda | does NJ2K's `FunctionalInterfacesConversion` fire when the anon class is captured into a field? |
 | 02 | `02_static_final_constants/Sample.java` | const promotion | does `static final int X = 7` become `const val` or just `val`? what about strings? |
 | 03 | `03_nullability_no_annotation/Sample.java` | nullability inference | over-conservative on field set in ctor; does it see throw-on-null? |
-| 04 | `04_varargs_to_array/Sample.java` | varargs spread | call-site array → spread (`*arr`) or fall-back? |
+| 04 | `04_varargs_to_array/Sample.java` | varargs spread | call-site array -> spread (`*arr`) or fall-back? |
 | 05 | `05_generic_wildcard/Sample.java` | declaration-site variance | both `extends` and `super` in one signature |
 | 06 | `06_instanceof_pattern/Sample.java` | smart cast vs pattern | `!(o instanceof T t)` flow narrowing |
 | 07 | `07_try_with_resources/Sample.java` | `.use {}` rewrite | single vs two-resource case |

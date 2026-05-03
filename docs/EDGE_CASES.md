@@ -60,7 +60,7 @@ with code 3 so CI catches behavior regressions.
 ```
 fixtures/edge-converted/expectations.txt        -- 8 checks across 4 files (static J2K via runner)
 fixtures/newj2k/expectations.txt                -- 11 checks across 10 files (JetBrains testData)
-fixtures/llm-claude-converted/expectations.txt  -- 12 checks across 6 files (Claude Sonnet 4.6)
+fixtures/llm-claude-converted/expectations.txt  -- 12 checks across 6 files (Claude Sonnet 4.5)
 ```
 
 three separate files because the converters disagree on several cases
@@ -112,11 +112,16 @@ lives in a sibling fixture file the official tests inject. Not a J2K bug.
 
 **Did not land (J2K either over-conservative or wrong):**
 
-- *Const promotion* (h.02). `private static final` does promote
-  (verified against `staticMembers/PrivateStaticMembers.kt`: the field
-  becomes `private const val`). The public form does NOT promote in any
-  fixture I sampled, which lines up with my hypothesis. Documented and
-  fixed in [PROPOSED_FIX.md](PROPOSED_FIX.md).
+- *Const promotion* (h.02). Numeric / boolean static-final primitives
+  do promote. The public-string form does NOT promote in any fixture I
+  sampled. Cross-checked against the JCommander conversion (73 main/java
+  files): every static-final String comes back as `val FOO: String =
+  "..."`, never `const val`. The actual converter pass is
+  `AddConstModifierConversion` (32 lines, in
+  `plugins/kotlin/j2k/shared/src/org/jetbrains/kotlin/nj2k/conversions/`);
+  the gate `nullability != NotNull` short-circuits on String fields
+  whose Kotlin type the inferrer didn't flag as NotNull. Documented and
+  patched in [PROPOSED_FIX.md](PROPOSED_FIX.md).
 - *Anonymous-class to lambda lift* (h.01, when there's a self-reference).
   `localSelfReference.kt` keeps the `object :` form even though my
   hypothesis predicted lift. J2K's heuristic seems conservative when the

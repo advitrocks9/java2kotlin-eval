@@ -1,6 +1,6 @@
 # Headless J2K -- what worked, what didn't
 
-There is no public CLI for IntelliJ's Java→Kotlin converter. The
+There is no public CLI for IntelliJ's Java->Kotlin converter. The
 [discuss.kotlinlang.org thread](https://discuss.kotlinlang.org/t/how-to-convert-java-source-files-into-kotlin-in-an-existing-project-using-command-line/1507)
 on the topic ends with "Java to Kotlin conversion cannot be implemented
 correctly outside of IntelliJ IDEA." Meta worked around this by writing
@@ -147,24 +147,43 @@ preload it differently in our `<applicationConfigurable>` chain.
 
 Even on macOS, where the runner *did* complete one full edge-case run
 on 2026-04-29, subsequent invocations against the same sandbox reach
-"opened project" and then hang the same way as CI. The pattern matches:
-the second run inherits a partial coroutine state from the first, and
-`preloadNonHeadlessServices` never settles. Wiping
-`runner/build/idea-sandbox` before each run is the local workaround --
-not great, but it's what `J2KStarterAcceptanceTest` does.
+"opened project" and then hang the same way as CI. I didn't bisect
+which service caches state across invocations; the workaround is to
+wipe `runner/build/idea-sandbox` before each run, which is what
+`J2KStarterAcceptanceTest` and the `scripts/run-*.sh` helpers do. Two
+seconds of cleanup beats five minutes of staring at a hung process.
+
+## What the May 2 runner unblock changed
+
+The 2026-04-30 doc had the runner blocked. On 2026-05-02 I bisected the
+actual `IndexNotReadyException` thrown by
+`KotlinStdlibCacheImpl$ModuleStdlibDependencyCache.calculate` inside
+J2K's nullability inferrer: the converter starts before the JDK index
+finishes scanning. Adding a `DumbService.isDumb` poll (block until
+smart mode reaches) before `elementsToKotlin` fixed it on macOS. The
+runner now completes JCommander (73 main/java files -> 73 .kt files) on
+a fresh sandbox in ~30 seconds + ~5-10 minutes of one-time JDK indexing.
+
+The CI `runIde` job is still off because xvfb-on-ubuntu still hangs
+upstream of the dumb-mode wait (the `preloadNonHeadlessServices`
+coroutine). My local fix is sufficient to capture
+`fixtures/jcommander-converted/` outputs and run the eval + tests-pass
+metric, but the platform gap on CI remains.
 
 ## What this means for the submission
 
 Three things, all in the README's headline:
-1. The eval pipeline is real and CI-verified. It runs `kotlinc` +
-   PSI metrics over real J2K output (the 15-pair JetBrains testData
-   sample plus four captured runner outputs).
+1. The eval module's tests run in CI; the `runIde` leg is documented as
+   a known gap. CI scores the committed JetBrains testData sample (15
+   pairs), the committed runner outputs (4 fixtures + 73 from
+   JCommander), and the committed Claude captures.
 2. The runner architecture compiles, the plugin loads, and the
-   conversion path has executed end-to-end at least once with the
-   captured fixtures as proof.
-3. The runner-in-CI path is blocked on a real platform hang I
-   diagnosed but didn't fix. Documenting that gap honestly (with
-   logs) seemed worth more than papering over it.
+   conversion path has executed end-to-end on macOS with JDK 21,
+   IntelliJ Platform 2024.3, against both the edge-cases corpus and
+   the full JCommander main/java tree. Outputs are committed.
+3. The runner-in-CI path is blocked on a platform hang I localised but
+   didn't bisect to a single service. Documenting that gap honestly
+   (with logs) seemed worth more than papering over it.
 
 A senior reviewer who wants to fix the hang has the captured stack
 trace and the recipe to reproduce -- the headless-j2k-cancel-tail.txt
