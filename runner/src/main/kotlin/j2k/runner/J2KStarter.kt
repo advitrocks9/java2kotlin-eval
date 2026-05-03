@@ -12,6 +12,7 @@ import com.intellij.openapi.projectRoots.JavaSdk
 import com.intellij.openapi.projectRoots.ProjectJdkTable
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.DumbService
 import com.intellij.ide.impl.OpenProjectTask
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.ex.ProjectManagerEx
@@ -103,13 +104,62 @@ class J2KStarter : ApplicationStarter {
             ?: error("could not open project at $workRoot")
         log("opened project: ${project.name}")
 
+        var jdkReg: JdkRegistration? = null
         try {
-            attachJdkAndSrcRoot(project, srcRoot)
+            jdkReg = attachJdkAndSrcRoot(project, srcRoot)
             log("attached JDK + source root")
+            // wait for indexing. KotlinStdlibCache hits IndexNotReadyException
+            // if the JDK roots haven't been scanned yet, and J2K's
+            // nullability inferrer asks the cache for stdlib dependencies on
+            // every file. block here instead of letting that throw inside the
+            // converter and surface as a null Result.
+            log("waiting for smart mode (indexing to complete)")
+            val dumb = DumbService.getInstance(project)
+            // poll every 250ms; the JDK index + project scan on a real project
+            // (jcommander, ~73 files + JDK 21 stdlib) takes 5-10 minutes on a
+            // first run. Cap at 30 minutes so an actually stuck index still
+            // surfaces.
+            val deadlineMs = (System.getenv("J2K_INDEX_TIMEOUT_MS")?.toLongOrNull() ?: (30L * 60 * 1000))
+            val deadline = System.currentTimeMillis() + deadlineMs
+            var lastReportS = -1L
+            while (dumb.isDumb && System.currentTimeMillis() < deadline) {
+                Thread.sleep(250)
+                val elapsed = (deadline - System.currentTimeMillis() - deadlineMs).let { -it / 1000 }
+                if (elapsed != lastReportS && elapsed % 30 == 0L) {
+                    log("still dumb at ${elapsed}s")
+                    lastReportS = elapsed
+                }
+            }
+            if (dumb.isDumb) error("indexing did not complete within ${deadlineMs / 1000}s")
+            log("smart mode reached")
+            val javaCount = collectJavaFiles(srcRoot).size
             val converted = doConvert(project, srcRoot)
             log("converter produced ${converted.size} files")
             mirrorOutputs(converted, srcRoot, outDir)
+
+            // surface partial conversion. previous code used mapNotNull and
+            // exited 0 even when 12/15 inputs returned null. now: count the
+            // diff, log each missing relpath, exit non-zero so the calling
+            // script's `set -e` actually fires.
+            if (converted.size < javaCount) {
+                val convertedJavaPaths = converted.keys.toSet()
+                for (java in collectJavaFiles(srcRoot)) {
+                    val abs = java.toAbsolutePath().normalize()
+                    if (abs !in convertedJavaPaths) {
+                        System.err.println("[j2k] J2K-FAILED: ${srcRoot.relativize(abs)}")
+                    }
+                }
+                error("J2K returned null for ${javaCount - converted.size} of $javaCount input file(s)")
+            }
         } finally {
+            // ProjectJdkTable is global and survives across runs of the IDE
+            // sandbox -- if we added our entry on this invocation, take it
+            // back so a follow-up run doesn't depend on leftover state.
+            if (jdkReg?.added == true) {
+                runWriteAction {
+                    ProjectJdkTable.getInstance().removeJdk(jdkReg!!.sdk)
+                }
+            }
             pmEx.closeAndDispose(project)
         }
     }
@@ -129,21 +179,31 @@ class J2KStarter : ApplicationStarter {
     private fun collectJavaFiles(root: Path): List<Path> =
         Files.walk(root).use { it.filter { p -> p.toString().endsWith(".java") }.toList() }
 
-    private fun attachJdkAndSrcRoot(project: Project, srcRoot: Path) {
+    /**
+     * Returns the SDK and a flag indicating whether this invocation added it
+     * to the global ProjectJdkTable (vs. found one already there). The caller
+     * uses the flag to decide whether to remove the entry on cleanup.
+     */
+    private data class JdkRegistration(val sdk: Sdk, val added: Boolean)
+
+    private fun attachJdkAndSrcRoot(project: Project, srcRoot: Path): JdkRegistration {
         // JDK creation indexes the JDK class roots -- a write op. We're
         // already on EDT inside a write-intent context; runWriteAction
         // upgrades that.
-        val sdk: Sdk = runWriteAction {
+        val registration: JdkRegistration = runWriteAction {
             val table = ProjectJdkTable.getInstance()
-            table.findJdk("auto-jdk-21") ?: run {
+            val existing = table.findJdk("auto-jdk-21")
+            if (existing != null) {
+                JdkRegistration(existing, added = false)
+            } else {
                 val javaHome = System.getProperty("java.home") ?: error("java.home unset")
                 val sdk = JavaSdk.getInstance().createJdk("auto-jdk-21", javaHome, false)
                 table.addJdk(sdk)
-                sdk
+                JdkRegistration(sdk, added = true)
             }
         }
         runWriteAction {
-            ProjectRootManager.getInstance(project).projectSdk = sdk
+            ProjectRootManager.getInstance(project).projectSdk = registration.sdk
         }
 
         val module = ensureModule(project, srcRoot)
@@ -161,6 +221,7 @@ class J2KStarter : ApplicationStarter {
         }
 
         VfsUtil.markDirtyAndRefresh(/* async = */ false, /* recursive = */ true, /* reloadChildren = */ true, srcVf)
+        return registration
     }
 
     /**
