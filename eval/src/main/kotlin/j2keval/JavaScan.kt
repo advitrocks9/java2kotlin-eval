@@ -30,6 +30,13 @@ data class JavaMetrics(
     val anonymousClassExprs: Int,
     val staticFinalFields: Int,
     val staticFinalLiteralFields: Int,    // subset where the RHS is a literal
+    // separate counter: static final fields whose RHS is a compile-time
+    // constant EXPRESSION (per JLS 15.28) but not a single literal -- e.g.
+    // `1 + 2`, `"a" + "b"`. these are const-eligible in Kotlin but the
+    // literal-only check undercounts. JavaParser doesn't fully evaluate
+    // 15.28; this is a syntactic shortcut: BinaryExpr where both operands
+    // resolve to literal/literal-string forms.
+    val staticFinalConstExprFields: Int,
     val varargParameters: Int,
     val innerClassDecls: Int,             // non-static nested classes
     val singleAbstractMethodInterfaces: Int,  // `fun interface` candidates
@@ -65,6 +72,7 @@ object JavaScan {
                 file = file, locJava = text.count { it == '\n' } + 1, parseFailed = true,
                 tryWithResourceCount = 0, resourceCount = 0,
                 anonymousClassExprs = 0, staticFinalFields = 0, staticFinalLiteralFields = 0,
+                staticFinalConstExprFields = 0,
                 varargParameters = 0, innerClassDecls = 0, singleAbstractMethodInterfaces = 0,
             )
         }
@@ -89,6 +97,21 @@ object JavaScan {
                         init.isCharLiteralExpr || init.isDoubleLiteralExpr
             }
         }
+        // const-expression detection: BinaryExpr where every operand is a
+        // literal (recursively). catches `1 + 2`, `"a" + "b"`, `60 * 60`.
+        // misses references to other const fields (`X + 1` where X is also
+        // static final) and unary expressions on literals (`-1` already lands
+        // as IntegerLiteralExpr.minus, not UnaryExpr); good enough to signal
+        // "literal-only undercounts what const val could promote."
+        val staticFinalConstExpr = fields.sumOf { fd ->
+            fd.variables.count { v ->
+                val init = v.initializer.orElse(null) ?: return@count false
+                if (init.isLiteralExpr || init.isBooleanLiteralExpr || init.isStringLiteralExpr ||
+                    init.isIntegerLiteralExpr || init.isLongLiteralExpr ||
+                    init.isCharLiteralExpr || init.isDoubleLiteralExpr) return@count false
+                isLiteralOnlyExpression(init)
+            }
+        }
         val varargs = cu.findAll(MethodDeclaration::class.java)
             .flatMap { it.parameters }
             .count { it.isVarArgs }
@@ -96,6 +119,14 @@ object JavaScan {
             .count { it.isInnerClass }
         // SAM = exactly one abstract method. default and static methods don't
         // count as abstract, matching the standard SAM definition.
+        //
+        // TODO: this counts only methods declared on the interface itself.
+        // JLS 9.8 says a SAM type can inherit its abstract method from a
+        // super-interface (e.g. interface Foo extends Bar, where Bar carries
+        // the single abstract method). The current corpus does not exercise
+        // that case (every newJ2k SAM fixture declares its own method), so
+        // shipping the simpler check + a fixture that documents the gap is
+        // honest. See `edge-cases/16_inherited_sam/` for the test case.
         val samInterfaces = cu.findAll(ClassOrInterfaceDeclaration::class.java)
             .filter { it.isInterface }
             .count { iface ->
@@ -112,10 +143,29 @@ object JavaScan {
             anonymousClassExprs = anonExprs,
             staticFinalFields = staticFinal,
             staticFinalLiteralFields = staticFinalLiteral,
+            staticFinalConstExprFields = staticFinalConstExpr,
             varargParameters = varargs,
             innerClassDecls = innerClasses,
             singleAbstractMethodInterfaces = samInterfaces,
         )
+    }
+
+    /**
+     * Recursive check for "every leaf is a literal." returns false on any
+     * NameExpr / FieldAccessExpr -- those reference other symbols whose
+     * const-ness we can't know without symbol resolution.
+     */
+    private fun isLiteralOnlyExpression(expr: com.github.javaparser.ast.expr.Expression): Boolean {
+        if (expr.isLiteralExpr || expr.isStringLiteralExpr || expr.isBooleanLiteralExpr ||
+            expr.isIntegerLiteralExpr || expr.isLongLiteralExpr ||
+            expr.isCharLiteralExpr || expr.isDoubleLiteralExpr) return true
+        if (expr.isBinaryExpr) {
+            val be = expr.asBinaryExpr()
+            return isLiteralOnlyExpression(be.left) && isLiteralOnlyExpression(be.right)
+        }
+        if (expr.isEnclosedExpr) return isLiteralOnlyExpression(expr.asEnclosedExpr().inner)
+        if (expr.isUnaryExpr) return isLiteralOnlyExpression(expr.asUnaryExpr().expression)
+        return false
     }
 
     // newj2k has a few fragment-style fixtures (a single method declaration,

@@ -91,6 +91,25 @@ class JavaScanTest {
     }
 
     @Test
+    fun `static final with binary const expression is counted as expression-RHS`() {
+        // 1+2 and "a"+"b" are JLS 15.28 constant expressions; const-eligible
+        // in Kotlin. previously the literal-only check undercounted.
+        val tmp = Files.createTempFile("scan", ".java")
+        tmp.writeText("""
+            class C {
+                static final int LITERAL = 7;
+                static final int SUM = 1 + 2;
+                static final String JOINED = "a" + "b";
+                static final int CALLED = compute();
+                static int compute() { return 0; }
+            }
+        """.trimIndent())
+        val m = JavaScan.scan(tmp); assertNotNull(m)
+        assertEquals(1, m.staticFinalLiteralFields, "LITERAL only")
+        assertEquals(2, m.staticFinalConstExprFields, "SUM + JOINED, not CALLED")
+    }
+
+    @Test
     fun `fragment-style fixtures (no enclosing class) are wrapped before parsing`() {
         val tmp = Files.createTempFile("scan", ".java")
         tmp.writeText("""
