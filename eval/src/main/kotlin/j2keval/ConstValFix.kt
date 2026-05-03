@@ -33,25 +33,39 @@ import kotlin.io.path.writeText
 object ConstValFix {
 
     private val literalRhs = Regex(
-        // val NAME[: TYPE] = LITERAL
-        // LITERAL is one of: int, long, float, double, char, boolean, plain string
-        """^(\s*)(val\s+\w+(?:\s*:\s*[\w<>?]+)?\s*=\s*(?:""\s*"[^"]*"\s*""|"[^"\\$]*"|-?\d[\d_]*[LlFfDd]?|true|false|'[^'\\]'|\d+\.\d+[fFdD]?))(\s*)$""",
+        // [visibility ]val NAME[: TYPE] = LITERAL [// trailing-comment]
+        // visibility = optional private | internal | public
+        // LITERAL: string with no template, hex/bin/decimal numeric (with
+        // optional exp + L/F/D suffix), bool, char literal (incl escapes).
+        """^(\s*)((?:(?:private|internal|public)\s+)?val\s+\w+(?:\s*:\s*[\w<>?]+)?\s*=\s*(?:""" +
+            """"[^"\\$]*"|""" +
+            """-?(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+\-]?\d+)?)[LlFfDdUu]*|""" +
+            """true|false|""" +
+            """'(?:\\[btnr'"\\]|[^'\\])'""" +
+            """))(\s*(?://.*)?)$""",
         RegexOption.MULTILINE
     )
 
     /**
      * Returns the count of promotions applied and the rewritten text.
-     * Promotion only happens when the line sits inside a top-level scope or
-     * a companion object body -- we approximate that with a brace-depth
-     * pass over the file.
+     * Promotion only happens when the line sits inside a top-level scope,
+     * an `object` body, or a `companion object` body. We approximate scope
+     * with a brace-depth pass over the file (after string/comment scrubbing
+     * so `val msg = "}{"` doesn't lie about depth).
      */
     fun rewrite(source: String): Pair<Int, String> {
         val lines = source.lines()
-        val scope = computeScopeKind(lines)
+        val scope = scopeKindForLines(lines)
         var promoted = 0
         val out = lines.mapIndexed { idx, line ->
             if (scope[idx] != ScopeKind.PROMOTABLE) return@mapIndexed line
             if (line.trimStart().startsWith("const ")) return@mapIndexed line
+            // Skip vals that already carry the const modifier even after a
+            // visibility prefix: `private const val ...`.
+            val withoutVis = line.trimStart()
+                .removePrefix("private ").removePrefix("internal ").removePrefix("public ")
+                .trimStart()
+            if (withoutVis.startsWith("const ")) return@mapIndexed line
             val match = literalRhs.matchEntire(line) ?: return@mapIndexed line
             val indent = match.groupValues[1]
             val core = match.groupValues[2].replaceFirst("val ", "const val ")
@@ -65,31 +79,40 @@ object ConstValFix {
     /**
      * For each line, decide whether a `val` declared at this position would
      * be a sensible promotion target. PROMOTABLE = top-level OR inside a
-     * `companion object` body (one level deep, no nested classes between).
+     * `companion object` / `object` body (no enclosing fun/class between).
+     *
+     * Public so Metrics.scan can re-use the same scope walk for
+     * constEligibleVal counting -- the metric and the fix should agree on
+     * what counts.
      */
-    private fun computeScopeKind(lines: List<String>): List<ScopeKind> {
+    fun scopeKindForLines(lines: List<String>): List<ScopeKind> {
         val result = mutableListOf<ScopeKind>()
         // Stack of scope kinds: TOP -> CLASS or COMPANION on enter, pop on '}'
         val stack = ArrayDeque<ScopeKind>()
         stack.addLast(ScopeKind.PROMOTABLE)
 
         for (line in lines) {
-            val trimmed = line.trim()
             // record the kind BEFORE updating the stack -- the val declared
             // on a line lives in the scope present at line start.
             result += stack.last()
 
+            // strip line comments and string literals before any brace
+            // counting so `val msg = "}{"` and `// foo {` don't move the
+            // depth. block comments are rare in J2K output and would need a
+            // second pass; the cases I've seen don't carry them on
+            // declaration lines.
+            val scrubbed = stripStringsAndLineComments(line)
+
             // `companion object` and top-level `object` are both PROMOTABLE
             // -- both compile `const val`. Regular `class` / `interface` /
             // `enum class` are not.
-            val opensCompanion = Regex("""\bcompanion\s+object\b[^{]*\{""").containsMatchIn(line)
-            val opensObject = !opensCompanion && Regex("""(^|\s)object\s+\w+[^{]*\{""").containsMatchIn(line)
-            val opensClass = !opensCompanion && !opensObject && Regex("""\b(class|interface|enum\s+class)\b[^{]*\{""").containsMatchIn(line)
-            val opensFun = Regex("""\bfun\b[^{]*\{""").containsMatchIn(line)
-            val opensInit = Regex("""\binit\s*\{""").containsMatchIn(line)
-            // count net brace delta on the line
-            val opens = line.count { it == '{' }
-            val closes = line.count { it == '}' }
+            val opensCompanion = Regex("""\bcompanion\s+object\b[^{]*\{""").containsMatchIn(scrubbed)
+            val opensObject = !opensCompanion && Regex("""(^|\s)object\s+\w+[^{]*\{""").containsMatchIn(scrubbed)
+            val opensClass = !opensCompanion && !opensObject && Regex("""\b(class|interface|enum\s+class)\b[^{]*\{""").containsMatchIn(scrubbed)
+            val opensFun = Regex("""\bfun\b[^{]*\{""").containsMatchIn(scrubbed)
+            val opensInit = Regex("""\binit\s*\{""").containsMatchIn(scrubbed)
+            val opens = scrubbed.count { it == '{' }
+            val closes = scrubbed.count { it == '}' }
 
             if (opensCompanion || opensObject) {
                 stack.addLast(ScopeKind.PROMOTABLE)
@@ -102,14 +125,38 @@ object ConstValFix {
             if (closes > opens) {
                 repeat((closes - opens).coerceAtMost(stack.size - 1)) { stack.removeLast() }
             }
-            if (trimmed.endsWith("{") && !opensCompanion && !opensClass && !opensFun && !opensInit) {
-                // already handled above by opens delta; nothing more.
-            }
         }
         return result
     }
 
-    private enum class ScopeKind { PROMOTABLE, NOT_PROMOTABLE }
+    /**
+     * Replace every char inside a "..." string literal with a space, then
+     * truncate at the first `//`. Returns a string of the same length up to
+     * the truncation point so brace counts and column-based regex still line
+     * up. Doesn't try to handle multi-line raw strings ("""...""") -- those
+     * span lines, and J2K doesn't emit them on declaration lines I've seen.
+     */
+    private fun stripStringsAndLineComments(line: String): String {
+        val sb = StringBuilder(line.length)
+        var i = 0
+        var inStr = false
+        while (i < line.length) {
+            val c = line[i]
+            if (inStr) {
+                if (c == '\\' && i + 1 < line.length) {
+                    sb.append(' '); sb.append(' '); i += 2; continue
+                }
+                if (c == '"') { sb.append(c); inStr = false; i += 1; continue }
+                sb.append(' '); i += 1; continue
+            }
+            if (c == '"') { sb.append(c); inStr = true; i += 1; continue }
+            if (c == '/' && i + 1 < line.length && line[i + 1] == '/') break
+            sb.append(c); i += 1
+        }
+        return sb.toString()
+    }
+
+    enum class ScopeKind { PROMOTABLE, NOT_PROMOTABLE }
 }
 
 /** CLI: `j2keval-fix <kt-dir>` rewrites every .kt file in place and prints a summary. */
