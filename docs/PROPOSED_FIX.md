@@ -19,18 +19,39 @@ object Sample {
 ```
 
 The Java input had every field as `public static final`. Numeric primitives
-+ boolean got promoted; the String literal did not. Skimming the J2K
-postprocessing source, I haven't found the explicit rule that excludes
-strings -- the closest pass is `ImplicitOrExplicitTypeConverter` which
-deals with declared type vs inferred type. My read is the omission is in
-`PromoteToConstConversion` (or similar), which looks at primitives but
-not at string-literal RHS. Could be worth filing.
++ boolean got promoted; the String literal did not.
+
+The pass that handles this is
+[`AddConstModifierConversion`](https://github.com/JetBrains/intellij-community/blob/idea/243.21565.193/plugins/kotlin/j2k/shared/src/org/jetbrains/kotlin/nj2k/conversions/AddConstModifierConversion.kt)
+in `plugins/kotlin/j2k/shared/src/org/jetbrains/kotlin/nj2k/conversions/AddConstModifierConversion.kt`
+(IntelliJ Platform 2024.3 == build `idea/243.21565.193`). The class is 32 lines.
+
+Reading it: the gates are
+1. `JKField` with `IMMUTABLE` mutability
+2. `JKLiteralExpression` initializer
+3. `nullability == NotNull`
+4. `fqName in {"kotlin.Boolean","kotlin.Byte","kotlin.Short","kotlin.String","kotlin.Int","kotlin.Float","kotlin.Long","kotlin.Double"}`
+5. parent is `JKClass` with `isObjectOrCompanionObject == true`
+
+Gate (4) DOES include `kotlin.String`, so the spec accepts it. The gap is
+gate (3): J2K's nullability inferrer doesn't mark a Java `static final
+String FOO = "..."` field's Kotlin type as NotNull. The output still reads
+`val BASE_PATH: String = "/api/v1"` (declared as non-nullable `String`,
+not `String?`), but internally `JKType.nullability` is whatever the
+inferrer settled on, which on this fixture is not `NotNull`. So `gate (3)`
+short-circuits and the const-modifier never fires.
+
+Re-ran on JCommander to cross-check (73 main/java files, runner output
+under `fixtures/jcommander-converted/`). Same shape: every static-final
+String comes out as `val FOO: String = "..."`, never `const val`. Numeric
+constants do promote when present.
 
 The cross-check against newJ2k's
 `staticMembers/PrivateStaticMembers.kt` confirms the
 `private const val s = "abc"` form does work for *private* string
-constants. So the gap is specifically: public-visibility + string
-literal RHS.
+constants in JetBrains' own testData -- but that fixture's Java had a
+hand-crafted shape the inferrer can resolve. The general public-visibility
+case is the one that drops on real corpora.
 
 ## The fix
 
@@ -74,15 +95,30 @@ already-const NO double-promote, computed-RHS NO promote.
 
 ## Why a post-processor and not a J2K patch
 
-The cleanest fix is in J2K's NJ2K postprocessing pass
-(`PromoteToConstConversion` is where I'd add the string check). That
-needs a JetBrains opinion call -- promoting a public string field
-changes its observed binary semantics for separately-compiled Java
-callers (string interning, inlining at use sites). Since I can't make
-that call, I shipped it as an opt-in post-processor that runs *after*
-J2K. If the JetBrains answer is "we want this on by default, gated on a
-project setting", the regex translates almost 1:1 to a NJ2K
-postprocessing pass.
+The right fix is upstream in `AddConstModifierConversion` (or in the
+nullability inferrer that feeds it). Two paths I'd consider:
+
+1. Drop the `nullability != NotNull` gate when the initializer is a
+   non-null literal. A `JKLiteralExpression` whose value is a string,
+   numeric, char, or boolean literal cannot be null at runtime; the
+   const-modifier conversion can safely add `const` regardless of what
+   the inferrer settled on for the declared type.
+2. Keep the gate, but special-case the inferrer to set NotNull on a
+   field whose initializer is a non-null literal. That changes more
+   than just const-promotion (it propagates into other passes that
+   read the inferred nullability), so path 1 is smaller.
+
+Either change risks observable binary semantics for downstream Java
+callers: a Kotlin `const val X = "..."` field gets inlined at the call
+site (its bytecode disappears from the consuming `.class`), so a
+recompile of the caller is needed when the constant changes. JetBrains
+shipped that behaviour for primitives and bools already, so the
+precedent is there for strings.
+
+I shipped this as a post-processor instead because (a) I can't ship a
+patch into IntelliJ Platform from outside and (b) the fix-on-output
+shape lets you opt in per-project. The regex is a 30-line pass; the
+upstream change is similar.
 
 ## Things this fix doesn't catch
 
