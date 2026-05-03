@@ -14,6 +14,12 @@ RAW="https://raw.githubusercontent.com/${REPO}/${COMMIT}/${BASE}"
 
 DEST="$(cd "$(dirname "$0")/.." && pwd)/fixtures/newj2k"
 mkdir -p "$DEST"
+# Truncate index.csv at the start of each run. The previous version appended
+# unconditionally so re-running this script on an existing checkout produced
+# a 30-line / 45-line / ... file with duplicate rows. Provenance has to be
+# reproducible.
+: > "$DEST/index.csv"
+echo "tag,category,name" > "$DEST/index.csv"
 
 # (category, basename, my-hypothesis-tag)
 PAIRS=(
