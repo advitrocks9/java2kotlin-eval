@@ -1,0 +1,115 @@
+{
+  "model": "claude-sonnet-4-5",
+  "prompt_sha256": "cdb13163e8da64faac16d4af7816a5d1d5aabf10e0acee6eddbee8e4e8055888",
+  "prompt_source": "llm/src/main/kotlin/j2k/llm/Prompt.kt",
+  "generated_at": "2026-04-30T11:30:10+01:00",
+  "note": "tokens_in/tokens_out are not in the captures; reproduce by setting ANTHROPIC_API_KEY and running scripts/run-llm-eval.sh -- the response usage block is only available live.",
+  "reproduce": "ANTHROPIC_API_KEY=... J2K_LLM_OVERWRITE=1 bash scripts/run-llm-eval.sh",
+  "files": [
+    {
+      "case_id": "01_anonymous_runnable",
+      "input_path": "edge-cases/01_anonymous_runnable/Sample.java",
+      "input_sha256": "3f3ed5d9a2f1a480f8316fedc5d95b79a1d813cecf8bc62a498e36687d0bd4fa",
+      "output_path": "fixtures/llm-claude-converted/01_anonymous_runnable.kt",
+      "output_sha256": "2d563f9458ff25f16471b37b837cf12d68cdd824a4acb08ca1fbceedd50c9237"
+    },
+    {
+      "case_id": "02_static_final_constants",
+      "input_path": "edge-cases/02_static_final_constants/Sample.java",
+      "input_sha256": "18a2ef731c51f253b3726fd33c9829b5dfd8ef1f8bddc1cd48a94c79d32c052b",
+      "output_path": "fixtures/llm-claude-converted/02_static_final_constants.kt",
+      "output_sha256": "b3af35658cf09d4f15ec6925367a6240c5b25fea5b7f58d1b9ed4276d13df807"
+    },
+    {
+      "case_id": "03_nullability_no_annotation",
+      "input_path": "edge-cases/03_nullability_no_annotation/Sample.java",
+      "input_sha256": "4b87e9dd5ff3c811512eb003fcc6c639a8511c599a9ff0f438c00e6cc4b88ee0",
+      "output_path": "fixtures/llm-claude-converted/03_nullability_no_annotation.kt",
+      "output_sha256": "9c781010c1eb7bbc46e8c0fab80b5d7bc1e6d5a00eb01a4cca5a9873c4ff5f6c"
+    },
+    {
+      "case_id": "04_varargs_to_array",
+      "input_path": "edge-cases/04_varargs_to_array/Sample.java",
+      "input_sha256": "be77bb652857e4030f280e3f59f09330d77e90fb1046c988b66b8420b9bb818d",
+      "output_path": "fixtures/llm-claude-converted/04_varargs_to_array.kt",
+      "output_sha256": "e277496c90ba412291657ae14e6820906d00eb5964dddb340822cde2bf423351"
+    },
+    {
+      "case_id": "05_generic_wildcard",
+      "input_path": "edge-cases/05_generic_wildcard/Sample.java",
+      "input_sha256": "dd616ab21e191bfd9bf16f5bb04dc5ad00045542bdf6ae10540abd5bc0ba188b",
+      "output_path": "fixtures/llm-claude-converted/05_generic_wildcard.kt",
+      "output_sha256": "ebce72946495118b097b981d7609851f3f53a52a6b826b708ce4b6ac1a2592a7"
+    },
+    {
+      "case_id": "06_instanceof_pattern",
+      "input_path": "edge-cases/06_instanceof_pattern/Sample.java",
+      "input_sha256": "598053859934663a19baeb4b88f434c6fd7079a6cbd295291adc62e103df69a1",
+      "output_path": "fixtures/llm-claude-converted/06_instanceof_pattern.kt",
+      "output_sha256": "1af17e9e7db04a734d54459d38543ae6f60b6d3a9267556db28aa0120acbbd31"
+    },
+    {
+      "case_id": "07_try_with_resources",
+      "input_path": "edge-cases/07_try_with_resources/Sample.java",
+      "input_sha256": "82fad81cd3c2698192b3d95521541f1be914fb758497024db1ce15ab24282bde",
+      "output_path": "fixtures/llm-claude-converted/07_try_with_resources.kt",
+      "output_sha256": "ad71e0b8f9a9f64336ffc248795b9e6908aed54ec55122e5e4284a181cba3ed8"
+    },
+    {
+      "case_id": "08_static_utility_class",
+      "input_path": "edge-cases/08_static_utility_class/Sample.java",
+      "input_sha256": "96eebb839007cc1829667f35f244f95d504f6e8b5e6ce0d2f83e48fc1f049aad",
+      "output_path": "fixtures/llm-claude-converted/08_static_utility_class.kt",
+      "output_sha256": "93f02d6efb74a38f55663611ab1ccd20fd33cd87c3049814e8e52840382ad018"
+    },
+    {
+      "case_id": "09_enum_with_body",
+      "input_path": "edge-cases/09_enum_with_body/Sample.java",
+      "input_sha256": "ffe14b13d0b33f86f181171259f6eab4e9358d594a783f2c95595b51ffa02870",
+      "output_path": "fixtures/llm-claude-converted/09_enum_with_body.kt",
+      "output_sha256": "2cb8c06ebac5ed2bc0bb11314ca080e24f5b2c5a753725490849659836873571"
+    },
+    {
+      "case_id": "10_default_interface",
+      "input_path": "edge-cases/10_default_interface/Sample.java",
+      "input_sha256": "9f950997074934fbda66cc5e4d0c65f868211cc4fcb4faaaf734baf75aa03ee3",
+      "output_path": "fixtures/llm-claude-converted/10_default_interface.kt",
+      "output_sha256": "4b2043a565682e4dd03362fceab1119dc8eb2005ebc8cb96c5bf7f4cf0c8e1e2"
+    },
+    {
+      "case_id": "11_inner_class_outer_ref",
+      "input_path": "edge-cases/11_inner_class_outer_ref/Sample.java",
+      "input_sha256": "f788c90537d72c73ec36f8ffaa16d4162c57f3a21083c95f77148ee00e60e4ea",
+      "output_path": "fixtures/llm-claude-converted/11_inner_class_outer_ref.kt",
+      "output_sha256": "9eb3aaaafe5310a225a0569e09119f7d40c0a80cfe08d2ca5aa38466e4ccb636"
+    },
+    {
+      "case_id": "12_overloaded_default_args",
+      "input_path": "edge-cases/12_overloaded_default_args/Sample.java",
+      "input_sha256": "884a3554e07eca1d5cb0021111cc471f839c8847ecd49b243a381cb328893b4a",
+      "output_path": "fixtures/llm-claude-converted/12_overloaded_default_args.kt",
+      "output_sha256": "11857bbcd5de1be30bfd6d99648fcf1cec6b147899c680a46fccb3eaec02522d"
+    },
+    {
+      "case_id": "13_checked_exception",
+      "input_path": "edge-cases/13_checked_exception/Sample.java",
+      "input_sha256": "a2554da8ac8ec7b30dde02d5fbe1a1a18e6c6998597de521f9ccfa6c5d0e47be",
+      "output_path": "fixtures/llm-claude-converted/13_checked_exception.kt",
+      "output_sha256": "933dc56011645d4007182f621bc5f663e4300355e9f26f959f07c82c5859936b"
+    },
+    {
+      "case_id": "14_builder_chained",
+      "input_path": "edge-cases/14_builder_chained/Sample.java",
+      "input_sha256": "6f54b46d47b63d3b47825d6f0d225ccb69c6f634e3a8fbb388b1289f522c0052",
+      "output_path": "fixtures/llm-claude-converted/14_builder_chained.kt",
+      "output_sha256": "1c5dd9ac1d2357b1ec521851023d7874b63052a7fb59951d35d6c9df5bfe93ca"
+    },
+    {
+      "case_id": "15_array_creation",
+      "input_path": "edge-cases/15_array_creation/Sample.java",
+      "input_sha256": "cdfa509fdb6516c0a2fe1c33bacabae86661b8b9858052e2f314f5171256207b",
+      "output_path": "fixtures/llm-claude-converted/15_array_creation.kt",
+      "output_sha256": "95086b72b982066e4e437c480545805054872bedbda793ac4121ac668eb6e437"
+    }
+  ]
+}
