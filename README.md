@@ -16,19 +16,22 @@ catches drift), a normalized line-level diff against a reference corpus
 via `--baseline-corpus=<path>`, javaparser-side counts on the paired
 `.java` input for a recall ratio, one post-processor (`ConstValFix.kt`)
 that fixes the public-string const-promotion gap i found in static j2k,
-and a `j2keval compare` subcommand that side-by-sides two .jsonl runs.
+and a `j2keval compare` subcommand that emits a per-file compile +
+hypothesis cross-tab joining two `.jsonl` runs (not a similarity metric;
+just a side-by-side table).
 
 `runner/` is an intellij plugin (an `ApplicationStarter`) that opens an
 in-memory project, attaches a JDK + source root, and calls
 `NewJavaToKotlinConverter.elementsToKotlin` from a pooled thread under a
-read action. same architectural shape Meta describe in their [Kotlinator
-post](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/).
+read action. same shape as Meta's Kotlinator post (a class extending
+`ApplicationStarter` calling directly into the converter -- ref:
+[Translating Java to Kotlin at Scale](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/)).
 the gory details of getting it to run outside the IDE, plus the
-**platform gap that keeps it from running in CI**, are in
-[docs/HEADLESS_J2K.md](docs/HEADLESS_J2K.md).
+**CI gap** (xvfb-on-ubuntu hangs upstream of my plugin's dispatch),
+are in [docs/HEADLESS_J2K.md](docs/HEADLESS_J2K.md).
 
 `llm/` translates the same .java -> .kt contract via the Anthropic
-Messages API (Claude Sonnet 4.6 by default). captures land in
+Messages API (Claude Sonnet 4.5 by default). captures land in
 `fixtures/llm-claude-converted/` and the same eval scores them. point
 isn't to crown a winner -- it's that the eval doesn't care which
 converter produced the .kt, so a third or fourth source (gpt-5, gemini,
@@ -42,35 +45,60 @@ is **not** exercised in CI; the llm call is **not** invoked in CI either.
 
 - `runIde` under xvfb on ubuntu-latest hangs in IntelliJ Platform's
   `preloadNonHeadlessServices` before my `ApplicationStarter` dispatches.
-  same hang shape on macos once the sandbox warms up. i didn't isolate
-  which service is the culprit; ran out of time before going deeper into
-  platform internals. `scripts/run-edge-cases.sh` and
-  `scripts/run-jcommander-eval.sh` wipe `runner/build/idea-sandbox`
-  before each run as a workaround.
+  on macos the same hang fires once the sandbox warms up. local fix:
+  wipe `runner/build/idea-sandbox` before each run. that turned out to
+  be enough to convert the full JCommander main/java tree (73 files);
+  the CI gap remains.
+- second platform issue i did diagnose: J2K's nullability inferrer
+  hits `IndexNotReadyException` if it runs before JDK indexing settles.
+  `J2KStarter.kt` now polls `DumbService.isDumb` before calling
+  `elementsToKotlin`. that change is what unblocked the JCommander run.
 - the llm call costs money and needs an api key. local-only by design --
   `scripts/run-llm-eval.sh` is the entry point. CI scores the committed
   `fixtures/llm-claude-converted/*.kt` captures and never hits anthropic.
-- i didn't get to runtime-correctness measurement (compile the converted
-  kotlin against the source's own test suite). compile rate + structural
-  recall are necessary but not sufficient -- "do the original tests
-  still pass" is the actual bar and it's unfilled. JCommander was the
-  obvious candidate (testng harness, single-module, mostly self-
-  contained); ran out of clock.
+- runtime-correctness on JCommander: `scripts/run-jcommander-tests.sh`
+  attempts to compile the converted kotlin (16/73 standalone), then
+  the existing testng suite against it. the test sources fail to
+  compile against the converted classpath -- J2K's nullability /
+  override-modifier emissions don't match the original Java contract.
+  see `reports/jcommander-tests-pass.md` for the breakdown. the
+  compile-rate is the real-world finding; tests-pass is 0/0 because the
+  test suite can't even javac.
 
 ## headline numbers
 
-`reports/edge-converted.jsonl` (static J2K via runner, locally captured;
-4 of 15 cases before the platform hang re-fired):
+`reports/jcommander.md` (static J2K via runner, full main/java of cbeust/jcommander
+at pinned commit, locally captured):
+
+```
+files converted:                  73 / 73
+kotlinc pass rate (--isolated):   16 / 73 = 21.9%
+                                  (testng + jackson on classpath; per-file)
+JCommander tests-pass:            0 / 0
+                                  (test sources don't javac against the
+                                  converted classpath -- nullability +
+                                  override-modifier mismatches)
+```
+
+This is the real-world headline. The 21.9% compile rate is the answer
+to "does J2K produce code that builds standalone on a real OSS project?"
+and the 0/0 tests-pass is the answer to "does it preserve behaviour."
+The 21.9% is mostly empty interfaces / enums; substantive classes
+(`JCommander.kt`, `ParameterDescription.kt`, `Parameterized.kt`) all
+fail. Detail in `reports/jcommander.md` and
+`reports/jcommander-tests-pass.md`.
+
+`reports/edge-converted.jsonl` (static J2K via runner on the
+hand-written 15-case edge corpus; 4 of 15 captured in the original
+2026-04-29 run before the warm-sandbox hang fired, kept for reference):
 
 ```
 files captured:                   4 / 15
-kotlinc pass rate (--module):     4 / 4
+kotlinc pass rate (--isolated):   4 / 4
 hypothesis checks:                8 / 8 passing
-const-eligible val (regex):       1   (BASE_PATH = "/api/v1" -- gap)
-after ConstValFix.kt:             1   promoted
 ```
 
-`reports/llm-claude.jsonl` (Claude Sonnet 4.6, all 15 cases captured
+`reports/llm-claude.md` (Claude Sonnet 4.5, all 15 edge cases captured
 locally; CI scores the committed outputs):
 
 ```
@@ -79,14 +107,11 @@ kotlinc pass rate:                15 / 15
 hypothesis checks:                12 / 12 passing
 baseline-diff vs static J2K:      4 drifted, 11 baseline-missing
                                   (static J2K only captured 4 of these
-                                  before the platform hang re-fired)
-const-eligible val:               0   (Claude promoted them upstream;
-                                  ConstValFix.kt is dead code on this
-                                  corpus)
+                                  in the original run)
 ```
 
-`reports/newj2k.jsonl` (15-pair authentic J2K input/output, fetched
-from a pinned commit of `intellij-community/plugins/kotlin/j2k/shared/tests/testData/newJ2k`):
+`reports/newj2k.md` (15-pair authentic J2K input/output, fetched from a
+pinned commit of `intellij-community/plugins/kotlin/j2k/shared/tests/testData/newJ2k`):
 
 ```
 files:                            15
@@ -128,7 +153,7 @@ bash scripts/fetch-newj2k-fixtures.sh               # pull the 15-pair newJ2k sa
     --expectations=fixtures/edge-converted/expectations.txt"
 
 ./gradlew :eval:run --args="fixtures/llm-claude-converted reports/llm-claude.md \
-    --source=claude-sonnet-4-6 \
+    --source=claude-sonnet-4-5 \
     --baseline-corpus=fixtures/edge-converted \
     --expectations=fixtures/llm-claude-converted/expectations.txt"
 
@@ -161,7 +186,7 @@ agreement covers that traffic.
 
 - `eval/` -- scoring app, post-processor, JSONL schema, compare.
 - `runner/` -- static J2K runner plugin (the `ApplicationStarter`).
-- `llm/` -- Claude Sonnet 4.6 translator. local-only.
+- `llm/` -- Claude Sonnet 4.5 translator. local-only.
 - `edge-cases/` -- 15 hand-written java cases, each tagged with a
   hypothesis i wrote down before running it through any converter.
   see [`HYPOTHESES.md`](edge-cases/HYPOTHESES.md) for the table and
@@ -180,8 +205,8 @@ agreement covers that traffic.
 - Meta, [*Translating Java to Kotlin at
   Scale*](https://engineering.fb.com/2024/12/18/android/translating-java-to-kotlin-at-scale/)
   -- the architectural source for the ApplicationStarter pattern, plus
-  the Kotlinator post-processor pipeline (preprocess → J2K → ~150
-  transforms → linters → build-fix) which is way larger in scope than
+  the Kotlinator post-processor pipeline (preprocess -> J2K -> ~150
+  transforms -> linters -> build-fix) which is way larger in scope than
   this submission.
 - JetBrains, [`intellij-community/plugins/kotlin/j2k`](https://github.com/JetBrains/intellij-community/tree/master/plugins/kotlin/j2k)
   -- the converter source and its `shared/tests/testData/newJ2k`
