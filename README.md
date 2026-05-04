@@ -161,13 +161,20 @@ bash scripts/fetch-newj2k-fixtures.sh               # pull the 15-pair newJ2k sa
     reports/llm-claude.jsonl reports/compare.md"
 ```
 
-To exercise the runner end-to-end (fresh sandbox required, takes 5+
+### Local replication of the runner
+
+CI doesn't boot the runner -- IntelliJ's `preloadNonHeadlessServices`
+hangs under xvfb on ubuntu before `ApplicationStarter` dispatches, so
+the converted .kt under `fixtures/*-converted/` were produced locally
+and committed. To re-run end-to-end (fresh sandbox required, takes 5+
 minutes, see `docs/HEADLESS_J2K.md` for the macOS gotcha):
 
 ```
 J2K_RUN_ACCEPTANCE=1 ./gradlew :runner:test --tests '*Acceptance*'
 # or, on a one-shot corpus:
 ./gradlew :runner:runIde --args="j2k <input-java-dir> <output-kt-dir>"
+# or, full JCommander main/java tree -> reports/jcommander.md:
+bash scripts/run-jcommander-eval.sh
 ```
 
 To re-translate via Claude (costs ~$0.15 in API tokens):

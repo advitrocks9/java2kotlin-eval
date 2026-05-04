@@ -6,13 +6,16 @@ on:
   pull_request:
   workflow_dispatch:
 
-# CI runs the eval pipeline against committed corpora. The runner plugin
-# (runner/) is intentionally NOT exercised here -- runIde under xvfb on
-# ubuntu-latest hangs in IntelliJ Platform's preloadNonHeadlessServices
-# before our ApplicationStarter ever dispatches. That's a real platform
-# gap, documented with the idea.log evidence in docs/HEADLESS_J2K.md.
-# Locally, on a fresh sandbox, the runner does complete end-to-end -- the
-# committed fixtures under fixtures/edge-converted/ are its captured output.
+# CI runs the eval harness against committed corpora. The runner plugin
+# (runner/) runs locally, not in CI: the IntelliJ ApplicationStarter
+# wants the IDE's application sandbox, and runIde under xvfb on
+# ubuntu-latest hangs in preloadNonHeadlessServices before our
+# ApplicationStarter dispatches. idea.log evidence in docs/HEADLESS_J2K.md.
+# CI validates the eval harness only -- the converted .kt under
+# fixtures/edge-converted/, fixtures/jcommander-converted/, and
+# fixtures/llm-claude-converted/ were all produced locally and committed.
+# README "Local replication" subsection documents how to re-run the
+# converter on a fresh sandbox.
 
 jobs:
   newj2k-cross-check:
