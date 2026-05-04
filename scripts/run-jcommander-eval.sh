@@ -14,7 +14,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TARGET="${ROOT}/target/jcommander"
 CONVERTED="${ROOT}/fixtures/jcommander-converted"
+# Module compile is the headline: one kotlinc invocation over the 73 .kt
+# files, classpath = testng + jackson + jcommander main. That answers the
+# real question -- "does the converted module link as a unit?".
+# Isolated mode (per-file) is kept as a per-file diagnostic; it inflates
+# the pass rate by hiding cross-file unresolved references.
 REPORT_RAW="${ROOT}/reports/jcommander.md"
+REPORT_ISOLATED="${ROOT}/reports/jcommander-isolated.md"
 REPORT_FIXED="${ROOT}/reports/jcommander-fixed.md"
 
 mkdir -p "$(dirname "$REPORT_RAW")"
@@ -65,13 +71,16 @@ JC_ANN=$(find ~/.gradle/caches/modules-2 -name 'jackson-annotations-2.13.1.jar' 
 JC_CL="$TARGET/build/classes/java/main"
 export KOTLINC_CLASSPATH="$TESTNG:$JC_CORE:$JC_ANN:$JC_CL"
 
-echo "[run] eval over raw J2K output (--isolated, classpath: testng + jackson + jcommander main)"
-"${ROOT}/gradlew" :eval:run --args="$CONVERTED $REPORT_RAW --isolated --java-source-root=$TARGET/src/main/java --allow-compile-fails=99"
+echo "[run] eval over raw J2K output -- MODULE mode (one kotlinc batch, real-codebase headline)"
+"${ROOT}/gradlew" :eval:run --args="$CONVERTED $REPORT_RAW --module --java-source-root=$TARGET/src/main/java --allow-compile-fails=99"
+
+echo "[run] eval over raw J2K output -- ISOLATED mode (per-file diagnostic, hides cross-file refs)"
+"${ROOT}/gradlew" :eval:run --args="$CONVERTED $REPORT_ISOLATED --isolated --java-source-root=$TARGET/src/main/java --allow-compile-fails=99"
 
 echo "[run] applying const-val fix"
 "${ROOT}/gradlew" :eval:run --args="fix-const-val $CONVERTED"
 
-echo "[run] re-eval after fix"
-"${ROOT}/gradlew" :eval:run --args="$CONVERTED $REPORT_FIXED --isolated --java-source-root=$TARGET/src/main/java --allow-compile-fails=99"
+echo "[run] re-eval after fix (module mode)"
+"${ROOT}/gradlew" :eval:run --args="$CONVERTED $REPORT_FIXED --module --java-source-root=$TARGET/src/main/java --allow-compile-fails=99"
 
-echo "[run] reports: $REPORT_RAW $REPORT_FIXED"
+echo "[run] reports: $REPORT_RAW $REPORT_ISOLATED $REPORT_FIXED"

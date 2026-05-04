@@ -72,21 +72,32 @@ at pinned commit, locally captured):
 
 ```
 files converted:                  73 / 73
-kotlinc pass rate (--isolated):   16 / 73 = 21.9%
-                                  (testng + jackson on classpath; per-file)
-JCommander tests-pass:            0 / 0
-                                  (test sources don't javac against the
-                                  converted classpath -- nullability +
-                                  override-modifier mismatches)
+kotlinc pass rate (--module):     0 / 73
+                                  (one batch, classpath = testng + jackson +
+                                   jcommander main; the module fails to link)
+JCommander tests-pass:            future work, see reports/jcommander-tests-pass.md
+                                  (test sources don't javac against the converted
+                                   classpath -- nullability + override-modifier
+                                   mismatches)
 ```
 
-This is the real-world headline. The 21.9% compile rate is the answer
-to "does J2K produce code that builds standalone on a real OSS project?"
-and the 0/0 tests-pass is the answer to "does it preserve behaviour."
-The 21.9% is mostly empty interfaces / enums; substantive classes
-(`JCommander.kt`, `ParameterDescription.kt`, `Parameterized.kt`) all
-fail. Detail in `reports/jcommander.md` and
-`reports/jcommander-tests-pass.md`.
+Module mode is the real-codebase metric. One kotlinc invocation over
+all 73 .kt at once, exactly how the JCommander module would be built
+in production. Answer: it doesn't link. The 364 "other", 297 "unresolved
+reference", 211 "nullability", 106 "type mismatch" buckets in
+`reports/jcommander.md` are what's blocking it.
+
+For comparison, `reports/jcommander-isolated.md` runs `kotlinc` per-file
+in isolation. That mode reports 16 / 73 (21.9%) pass -- diagnostic only.
+It hides cross-file unresolved references because each file compiles
+without seeing its siblings; e.g. `JCommander.kt` has 375 errors in
+isolated mode, 409 in module mode, but the isolated number isn't a
+"would this ship" signal. Substantive classes (`JCommander.kt`,
+`ParameterDescription.kt`, `Parameterized.kt`) fail in both modes; the
+per-file pass-list is dominated by empty interfaces and enums.
+
+`CompileChecker.kt:14-29` documents the mode trade-off; the script
+`scripts/run-jcommander-eval.sh` runs both.
 
 `reports/edge-converted.jsonl` (static J2K via runner on the
 hand-written 15-case edge corpus; 4 of 15 captured in the original
