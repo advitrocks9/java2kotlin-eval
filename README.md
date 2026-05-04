@@ -56,14 +56,16 @@ is **not** exercised in CI; the llm call is **not** invoked in CI either.
 - the llm call costs money and needs an api key. local-only by design --
   `scripts/run-llm-eval.sh` is the entry point. CI scores the committed
   `fixtures/llm-claude-converted/*.kt` captures and never hits anthropic.
-- runtime-correctness on JCommander: `scripts/run-jcommander-tests.sh`
-  attempts to compile the converted kotlin (16/73 standalone), then
-  the existing testng suite against it. the test sources fail to
-  compile against the converted classpath -- J2K's nullability /
-  override-modifier emissions don't match the original Java contract.
-  see `reports/jcommander-tests-pass.md` for the breakdown. the
-  compile-rate is the real-world finding; tests-pass is 0/0 because the
-  test suite can't even javac.
+- runtime-correctness on JCommander: future work. the test-compile
+  step in `scripts/run-jcommander-tests.sh:120` blocks on two
+  specific issues before any test runs (missing `--add-exports
+  java.base/sun.reflect.annotation=ALL-UNNAMED` on javac, and
+  `Sets.newLinkedHashSet()`-style static-method drift -- J2K emits
+  the Kotlin equivalent as instance, not static, so Java callers
+  break with "non-static method cannot be referenced from a static
+  context"). both blockers + the proposed fix are named in
+  `reports/jcommander-tests-pass.md`. the compile-rate is the
+  real-world finding; tests-pass is demoted until those two land.
 
 ## headline numbers
 
