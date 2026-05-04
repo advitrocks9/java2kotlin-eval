@@ -1,7 +1,7 @@
 # J2K eval report
 
 - corpus: `fixtures/jcommander-converted`
-- generated: 2026-05-04T19:14:13.541372Z
+- generated: 2026-05-04T19:29:33.857453Z
 - files: 73
 - kotlinc pass rate: 0.0% (0/73)
 
@@ -9,79 +9,79 @@
 
 | file | ok | errs | ms |
 |------|----|------|----|
-| `com/beust/jcommander/DefaultUsageFormatter.kt` | **no** | 98 | 92 |
-| `com/beust/jcommander/DynamicParameter.kt` | **no** | 6 | 92 |
-| `com/beust/jcommander/FuzzyMap.kt` | **no** | 20 | 92 |
-| `com/beust/jcommander/IDefaultProvider.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/IMainParameter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/IParameterValidator.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/IParameterValidator2.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/IParameterizedParser.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/IParametersValidator.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/IStringConverter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/IStringConverterFactory.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/IStringConverterInstanceFactory.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/IUsageFormatter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/IValueValidator.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/IVariableArity.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/JCommander.kt` | **no** | 409 | 92 |
-| `com/beust/jcommander/MissingCommandException.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/Parameter.kt` | **no** | 13 | 92 |
-| `com/beust/jcommander/ParameterDescription.kt` | **no** | 87 | 92 |
-| `com/beust/jcommander/ParameterException.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/Parameterized.kt` | **no** | 103 | 92 |
-| `com/beust/jcommander/Parameters.kt` | **no** | 2 | 92 |
-| `com/beust/jcommander/ParametersDelegate.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/ResourceBundle.kt` | **no** | 3 | 92 |
-| `com/beust/jcommander/StringKey.kt` | **no** | 4 | 92 |
-| `com/beust/jcommander/Strings.kt` | **no** | 4 | 92 |
-| `com/beust/jcommander/SubParameter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/UnixStyleUsageFormatter.kt` | **no** | 26 | 92 |
-| `com/beust/jcommander/WrappedParameter.kt` | **no** | 32 | 92 |
-| `com/beust/jcommander/converters/BaseConverter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/converters/BigDecimalConverter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/converters/BooleanConverter.kt` | **no** | 4 | 92 |
-| `com/beust/jcommander/converters/ByteOrderConverter.kt` | **no** | 3 | 92 |
-| `com/beust/jcommander/converters/CharArrayConverter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/converters/CharsetConverter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/converters/CommaParameterSplitter.kt` | **no** | 3 | 92 |
-| `com/beust/jcommander/converters/DefaultListConverter.kt` | **no** | 5 | 92 |
-| `com/beust/jcommander/converters/DoubleConverter.kt` | **no** | 2 | 92 |
-| `com/beust/jcommander/converters/EnumConverter.kt` | **no** | 6 | 92 |
-| `com/beust/jcommander/converters/FileConverter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/converters/FloatConverter.kt` | **no** | 2 | 92 |
-| `com/beust/jcommander/converters/IParameterSplitter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/converters/ISO8601DateConverter.kt` | **no** | 2 | 92 |
-| `com/beust/jcommander/converters/InetAddressConverter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/converters/InstantConverter.kt` | **no** | 5 | 92 |
-| `com/beust/jcommander/converters/IntegerConverter.kt` | **no** | 2 | 92 |
-| `com/beust/jcommander/converters/JavaTimeConverter.kt` | **no** | 3 | 92 |
-| `com/beust/jcommander/converters/LocalDateConverter.kt` | **no** | 4 | 92 |
-| `com/beust/jcommander/converters/LocalDateTimeConverter.kt` | **no** | 4 | 92 |
-| `com/beust/jcommander/converters/LocalTimeConverter.kt` | **no** | 4 | 92 |
-| `com/beust/jcommander/converters/LongConverter.kt` | **no** | 2 | 92 |
-| `com/beust/jcommander/converters/NoConverter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/converters/OffsetDateTimeConverter.kt` | **no** | 4 | 92 |
-| `com/beust/jcommander/converters/OffsetTimeConverter.kt` | **no** | 4 | 92 |
-| `com/beust/jcommander/converters/PathConverter.kt` | **no** | 2 | 92 |
-| `com/beust/jcommander/converters/StringConverter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/converters/URIConverter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/converters/URLConverter.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/converters/ZonedDateTimeConverter.kt` | **no** | 4 | 92 |
-| `com/beust/jcommander/defaultprovider/EnvironmentVariableDefaultProvider.kt` | **no** | 4 | 92 |
-| `com/beust/jcommander/defaultprovider/PropertyFileDefaultProvider.kt` | **no** | 5 | 92 |
-| `com/beust/jcommander/internal/Console.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/internal/DefaultConsole.kt` | **no** | 6 | 92 |
-| `com/beust/jcommander/internal/DefaultConverterFactory.kt` | **no** | 56 | 92 |
-| `com/beust/jcommander/internal/JDK6Console.kt` | **no** | 9 | 92 |
-| `com/beust/jcommander/internal/Lists.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/internal/Maps.kt` | **no** | 2 | 92 |
-| `com/beust/jcommander/internal/Nullable.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/internal/Sets.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/parser/DefaultParameterizedParser.kt` | **no** | 2 | 92 |
-| `com/beust/jcommander/validators/NoValidator.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/validators/NoValueValidator.kt` | **no** | 1 | 92 |
-| `com/beust/jcommander/validators/PositiveInteger.kt` | **no** | 1 | 92 |
+| `com/beust/jcommander/DefaultUsageFormatter.kt` | **no** | 98 | 106 |
+| `com/beust/jcommander/DynamicParameter.kt` | **no** | 6 | 106 |
+| `com/beust/jcommander/FuzzyMap.kt` | **no** | 20 | 106 |
+| `com/beust/jcommander/IDefaultProvider.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/IMainParameter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/IParameterValidator.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/IParameterValidator2.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/IParameterizedParser.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/IParametersValidator.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/IStringConverter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/IStringConverterFactory.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/IStringConverterInstanceFactory.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/IUsageFormatter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/IValueValidator.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/IVariableArity.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/JCommander.kt` | **no** | 409 | 106 |
+| `com/beust/jcommander/MissingCommandException.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/Parameter.kt` | **no** | 13 | 106 |
+| `com/beust/jcommander/ParameterDescription.kt` | **no** | 87 | 106 |
+| `com/beust/jcommander/ParameterException.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/Parameterized.kt` | **no** | 103 | 106 |
+| `com/beust/jcommander/Parameters.kt` | **no** | 2 | 106 |
+| `com/beust/jcommander/ParametersDelegate.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/ResourceBundle.kt` | **no** | 3 | 106 |
+| `com/beust/jcommander/StringKey.kt` | **no** | 4 | 106 |
+| `com/beust/jcommander/Strings.kt` | **no** | 4 | 106 |
+| `com/beust/jcommander/SubParameter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/UnixStyleUsageFormatter.kt` | **no** | 26 | 106 |
+| `com/beust/jcommander/WrappedParameter.kt` | **no** | 32 | 106 |
+| `com/beust/jcommander/converters/BaseConverter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/converters/BigDecimalConverter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/converters/BooleanConverter.kt` | **no** | 4 | 106 |
+| `com/beust/jcommander/converters/ByteOrderConverter.kt` | **no** | 3 | 106 |
+| `com/beust/jcommander/converters/CharArrayConverter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/converters/CharsetConverter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/converters/CommaParameterSplitter.kt` | **no** | 3 | 106 |
+| `com/beust/jcommander/converters/DefaultListConverter.kt` | **no** | 5 | 106 |
+| `com/beust/jcommander/converters/DoubleConverter.kt` | **no** | 2 | 106 |
+| `com/beust/jcommander/converters/EnumConverter.kt` | **no** | 6 | 106 |
+| `com/beust/jcommander/converters/FileConverter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/converters/FloatConverter.kt` | **no** | 2 | 106 |
+| `com/beust/jcommander/converters/IParameterSplitter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/converters/ISO8601DateConverter.kt` | **no** | 2 | 106 |
+| `com/beust/jcommander/converters/InetAddressConverter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/converters/InstantConverter.kt` | **no** | 5 | 106 |
+| `com/beust/jcommander/converters/IntegerConverter.kt` | **no** | 2 | 106 |
+| `com/beust/jcommander/converters/JavaTimeConverter.kt` | **no** | 3 | 106 |
+| `com/beust/jcommander/converters/LocalDateConverter.kt` | **no** | 4 | 106 |
+| `com/beust/jcommander/converters/LocalDateTimeConverter.kt` | **no** | 4 | 106 |
+| `com/beust/jcommander/converters/LocalTimeConverter.kt` | **no** | 4 | 106 |
+| `com/beust/jcommander/converters/LongConverter.kt` | **no** | 2 | 106 |
+| `com/beust/jcommander/converters/NoConverter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/converters/OffsetDateTimeConverter.kt` | **no** | 4 | 106 |
+| `com/beust/jcommander/converters/OffsetTimeConverter.kt` | **no** | 4 | 106 |
+| `com/beust/jcommander/converters/PathConverter.kt` | **no** | 2 | 106 |
+| `com/beust/jcommander/converters/StringConverter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/converters/URIConverter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/converters/URLConverter.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/converters/ZonedDateTimeConverter.kt` | **no** | 4 | 106 |
+| `com/beust/jcommander/defaultprovider/EnvironmentVariableDefaultProvider.kt` | **no** | 4 | 106 |
+| `com/beust/jcommander/defaultprovider/PropertyFileDefaultProvider.kt` | **no** | 5 | 106 |
+| `com/beust/jcommander/internal/Console.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/internal/DefaultConsole.kt` | **no** | 6 | 106 |
+| `com/beust/jcommander/internal/DefaultConverterFactory.kt` | **no** | 56 | 106 |
+| `com/beust/jcommander/internal/JDK6Console.kt` | **no** | 9 | 106 |
+| `com/beust/jcommander/internal/Lists.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/internal/Maps.kt` | **no** | 2 | 106 |
+| `com/beust/jcommander/internal/Nullable.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/internal/Sets.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/parser/DefaultParameterizedParser.kt` | **no** | 2 | 106 |
+| `com/beust/jcommander/validators/NoValidator.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/validators/NoValueValidator.kt` | **no** | 1 | 106 |
+| `com/beust/jcommander/validators/PositiveInteger.kt` | **no** | 1 | 106 |
 
 ### Compile-error buckets
 
@@ -108,6 +108,7 @@
 | `inner class` declarations | 2 |
 | `vararg` params | 11 |
 | `.use {}` resource blocks | 2 |
+| `lateinit var` declarations | 0 |
 
 ## Structural metrics (PSI -- KotlinCoreEnvironment)
 
@@ -121,6 +122,7 @@
 | const-eligible val | 5 | 0 | -5 |
 | inner class | 2 | 2 | 0 |
 | vararg | 11 | 11 | 0 |
+| lateinit var | 0 | 0 | 0 |
 
 ## Java -> Kotlin recall
 

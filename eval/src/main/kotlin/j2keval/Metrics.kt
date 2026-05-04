@@ -31,6 +31,7 @@ data class StructuralMetrics(
     val innerClass: Int,               // `inner class`
     val varargParams: Int,             // `vararg `
     val useBlocks: Int,                // try-with-resources -> .use { }
+    val lateinitVars: Int,             // `lateinit var` -- J2K's escape hatch for non-null fields it can't initialise
 )
 
 data class HypothesisCheck(
@@ -53,6 +54,13 @@ object Metrics {
     private val vararg_ = Regex("""\bvararg\s+\w""")
     private val useBlock = Regex("""\.use\s*\{""")
     private val throwsAnno = Regex("""@Throws\s*\(""")
+    // `lateinit var` -- escape hatch J2K (and humans) reach for when a
+    // non-null field can't be initialised at construction. high counts on
+    // converted Kotlin signal "the converter chose not to make this nullable
+    // and is asking the runtime to back it up", which is the opposite of
+    // good null-safety scoring. visibility modifiers can sit on either side
+    // of the lateinit keyword in J2K output.
+    private val lateinitVar = Regex("""\blateinit\s+(?:(?:private|internal|public|protected)\s+)?var\b""")
 
     // RHS of a `val NAME = LITERAL` where LITERAL is a primitive or string literal.
     // also accepts hex (0xff), binary (0b101), char ('\n'), exp-form (1e9), and
@@ -103,6 +111,7 @@ object Metrics {
             innerClass = innerClass.findAll(text).count(),
             varargParams = vararg_.findAll(text).count(),
             useBlocks = useBlock.findAll(text).count(),
+            lateinitVars = lateinitVar.findAll(text).count(),
         )
     }
 

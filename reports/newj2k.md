@@ -1,7 +1,7 @@
 # J2K eval report
 
 - corpus: `fixtures/newj2k`
-- generated: 2026-05-03T13:08:01.647609Z
+- generated: 2026-05-04T19:38:24.525180Z
 - files: 15
 - kotlinc pass rate: 93.3% (14/15)
 
@@ -9,21 +9,21 @@
 
 | file | ok | errs | ms |
 |------|----|------|----|
-| `anonymousClass/localSelfReference/localSelfReference.kt` | yes | 0 | 2105 |
-| `enum/constantsWithBody1/constantsWithBody1.kt` | yes | 0 | 2046 |
-| `field/nonConstInitializer/nonConstInitializer.kt` | yes | 0 | 1927 |
-| `functionalInterfaces/MyRunnable/MyRunnable.kt` | yes | 0 | 1822 |
-| `functionalInterfaces/NoFunctionalInterfaceAnnotation/NoFunctionalInterfaceAnnotation.kt` | yes | 0 | 1807 |
-| `nullability/FieldAssignedWithNull/FieldAssignedWithNull.kt` | yes | 0 | 1917 |
-| `nullability/FieldInitializedWithNull/FieldInitializedWithNull.kt` | yes | 0 | 1932 |
-| `objectLiteral/AccessThisInsideAnonClass/AccessThisInsideAnonClass.kt` | yes | 0 | 1971 |
-| `overloads/Override/Override.kt` | yes | 0 | 2074 |
-| `projections/projections/projections.kt` | yes | 0 | 2109 |
-| `staticMembers/StaticImport/StaticImport.kt` | **no** | 2 | 1600 |
-| `tryWithResource/MultipleResources/MultipleResources.kt` | yes | 0 | 2080 |
-| `tryWithResource/Simple/Simple.kt` | yes | 0 | 2054 |
-| `varArg/ellipsisTypeSingleParams/ellipsisTypeSingleParams.kt` | yes | 0 | 1887 |
-| `varArg/varargLengthAccess/varargLengthAccess.kt` | yes | 0 | 1924 |
+| `anonymousClass/localSelfReference/localSelfReference.kt` | yes | 0 | 14544 |
+| `enum/constantsWithBody1/constantsWithBody1.kt` | yes | 0 | 13745 |
+| `field/nonConstInitializer/nonConstInitializer.kt` | yes | 0 | 4584 |
+| `functionalInterfaces/MyRunnable/MyRunnable.kt` | yes | 0 | 5252 |
+| `functionalInterfaces/NoFunctionalInterfaceAnnotation/NoFunctionalInterfaceAnnotation.kt` | yes | 0 | 10992 |
+| `nullability/FieldAssignedWithNull/FieldAssignedWithNull.kt` | yes | 0 | 7898 |
+| `nullability/FieldInitializedWithNull/FieldInitializedWithNull.kt` | yes | 0 | 6985 |
+| `objectLiteral/AccessThisInsideAnonClass/AccessThisInsideAnonClass.kt` | yes | 0 | 17713 |
+| `overloads/Override/Override.kt` | yes | 0 | 4609 |
+| `projections/projections/projections.kt` | yes | 0 | 16330 |
+| `staticMembers/StaticImport/StaticImport.kt` | **no** | 2 | 4202 |
+| `tryWithResource/MultipleResources/MultipleResources.kt` | yes | 0 | 8623 |
+| `tryWithResource/Simple/Simple.kt` | yes | 0 | 19214 |
+| `varArg/ellipsisTypeSingleParams/ellipsisTypeSingleParams.kt` | yes | 0 | 4034 |
+| `varArg/varargLengthAccess/varargLengthAccess.kt` | yes | 0 | 3933 |
 
 ### Compile-error buckets
 
@@ -46,6 +46,7 @@
 | `inner class` declarations | 0 |
 | `vararg` params | 2 |
 | `.use {}` resource blocks | 3 |
+| `lateinit var` declarations | 0 |
 
 ## Structural metrics (PSI -- KotlinCoreEnvironment)
 
@@ -59,6 +60,7 @@
 | const-eligible val | 0 | 0 | 0 |
 | inner class | 0 | 0 | 0 |
 | vararg | 2 | 2 | 0 |
+| lateinit var | 0 | 0 | 0 |
 
 ## Hypothesis checks
 

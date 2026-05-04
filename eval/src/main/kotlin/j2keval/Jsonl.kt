@@ -68,6 +68,7 @@ data class MetricsRegexBlock(
     val innerClass: Int,
     val vararg_: Int,
     val useBlocks: Int,
+    val lateinitVars: Int,
 )
 
 data class MetricsPsiBlock(
@@ -80,6 +81,7 @@ data class MetricsPsiBlock(
     val constEligibleVals: Int,
     val innerClasses: Int,
     val varargParams: Int,
+    val lateinitVars: Int,
 )
 
 data class HypothesisBlock(
@@ -130,6 +132,7 @@ object Jsonl {
                 kv("inner_class", innerClass)
                 kv("vararg", vararg_)
                 kv("use_blocks", useBlocks)
+                kv("lateinit_vars", lateinitVars)
             }
         }
         if (r.metricsPsi != null) {
@@ -144,6 +147,7 @@ object Jsonl {
                     kv("const_eligible_vals", constEligibleVals)
                     kv("inner_classes", innerClasses)
                     kv("vararg_params", varargParams)
+                    kv("lateinit_vars", lateinitVars)
                 }
             }
         }

@@ -57,7 +57,7 @@ object Report {
 
         appendLine("## Structural metrics (aggregate)")
         appendLine()
-        val totals = structural.fold(IntArray(11)) { acc, m ->
+        val totals = structural.fold(IntArray(12)) { acc, m ->
             acc[0] += m.locKotlin
             acc[1] += m.notNullAsserts
             acc[2] += m.anonymousObjects
@@ -69,6 +69,7 @@ object Report {
             acc[8] += m.innerClass
             acc[9] += m.varargParams
             acc[10] += m.useBlocks
+            acc[11] += m.lateinitVars
             acc
         }
         appendLine("| metric | total |")
@@ -84,6 +85,7 @@ object Report {
         appendLine("| `inner class` declarations | ${totals[8]} |")
         appendLine("| `vararg` params | ${totals[9]} |")
         appendLine("| `.use {}` resource blocks | ${totals[10]} |")
+        appendLine("| `lateinit var` declarations | ${totals[11]} |")
         appendLine()
 
         if (psi.isNotEmpty()) {
@@ -91,7 +93,7 @@ object Report {
             // diverge where regex was wrong: object-literal expressions
             // nested in larger structures, !! inside string templates, vals
             // inside unusual scopes.
-            val psiTotals = IntArray(8)
+            val psiTotals = IntArray(9)
             for (m in psi) {
                 psiTotals[0] += m.notNullAsserts
                 psiTotals[1] += m.objectLiteralExprs
@@ -101,15 +103,17 @@ object Report {
                 psiTotals[5] += m.constEligibleVals
                 psiTotals[6] += m.innerClasses
                 psiTotals[7] += m.varargParams
+                psiTotals[8] += m.lateinitVars
             }
             appendLine("## Structural metrics (PSI -- KotlinCoreEnvironment)")
             appendLine()
             appendLine("| metric | regex | psi | delta |")
             appendLine("|--------|-------|-----|-------|")
-            val regexAgg = structural.fold(IntArray(8)) { acc, m ->
+            val regexAgg = structural.fold(IntArray(9)) { acc, m ->
                 acc[0] += m.notNullAsserts; acc[1] += m.anonymousObjects; acc[2] += m.funInterface
                 acc[3] += m.constVal; acc[4] += m.plainVal; acc[5] += m.constEligibleVal
                 acc[6] += m.innerClass; acc[7] += m.varargParams
+                acc[8] += m.lateinitVars
                 acc
             }
             val labels = listOf(
@@ -121,6 +125,7 @@ object Report {
                 "const-eligible val",
                 "inner class",
                 "vararg",
+                "lateinit var",
             )
             for (i in labels.indices) {
                 val delta = psiTotals[i] - regexAgg[i]

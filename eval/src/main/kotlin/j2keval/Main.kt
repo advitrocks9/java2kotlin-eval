@@ -260,6 +260,7 @@ private fun buildSamples(
                 innerClass = sm.innerClass,
                 vararg_ = sm.varargParams,
                 useBlocks = sm.useBlocks,
+                lateinitVars = sm.lateinitVars,
             ),
             metricsPsi = pm?.let {
                 MetricsPsiBlock(
@@ -272,6 +273,7 @@ private fun buildSamples(
                     constEligibleVals = it.constEligibleVals,
                     innerClasses = it.innerClasses,
                     varargParams = it.varargParams,
+                    lateinitVars = it.lateinitVars,
                 )
             },
             metricsJava = javaScans[f]?.let {

@@ -1,7 +1,7 @@
 # J2K eval report
 
 - corpus: `fixtures/edge-converted`
-- generated: 2026-05-03T13:08:10.941248Z
+- generated: 2026-05-04T19:35:19.186913Z
 - files: 4
 - kotlinc pass rate: 100.0% (4/4)
 
@@ -9,10 +9,10 @@
 
 | file | ok | errs | ms |
 |------|----|------|----|
-| `01_anonymous_runnable.kt` | yes | 0 | 2007 |
-| `02_static_final_constants.kt` | yes | 0 | 1986 |
-| `07_try_with_resources.kt` | yes | 0 | 2072 |
-| `08_static_utility_class.kt` | yes | 0 | 1972 |
+| `01_anonymous_runnable.kt` | yes | 0 | 5510 |
+| `02_static_final_constants.kt` | yes | 0 | 5510 |
+| `07_try_with_resources.kt` | yes | 0 | 5510 |
+| `08_static_utility_class.kt` | yes | 0 | 5510 |
 
 ## Structural metrics (aggregate)
 
@@ -29,6 +29,7 @@
 | `inner class` declarations | 0 |
 | `vararg` params | 0 |
 | `.use {}` resource blocks | 3 |
+| `lateinit var` declarations | 0 |
 
 ## Structural metrics (PSI -- KotlinCoreEnvironment)
 
@@ -42,6 +43,7 @@
 | const-eligible val | 1 | 0 | -1 |
 | inner class | 0 | 0 | 0 |
 | vararg | 0 | 0 | 0 |
+| lateinit var | 0 | 0 | 0 |
 
 ## Hypothesis checks
 

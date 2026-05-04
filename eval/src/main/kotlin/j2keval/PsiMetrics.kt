@@ -31,6 +31,7 @@ data class PsiMetrics(
     val constEligibleVals: Int,
     val innerClasses: Int,
     val varargParams: Int,
+    val lateinitVars: Int,          // properties with the `lateinit` modifier
 )
 
 object PsiScan {
@@ -49,6 +50,7 @@ object PsiScan {
             constEligibleVals = v.constEligibleVals,
             innerClasses = v.innerClasses,
             varargParams = v.varargParams,
+            lateinitVars = v.lateinitVars,
         )
     }
 
@@ -61,6 +63,7 @@ object PsiScan {
         var constEligibleVals = 0
         var innerClasses = 0
         var varargParams = 0
+        var lateinitVars = 0
 
         override fun visitPostfixExpression(expr: KtPostfixExpression) {
             if (expr.operationToken == KtTokens.EXCLEXCL) notNullAsserts += 1
@@ -95,6 +98,8 @@ object PsiScan {
                     plainVals += 1
                     if (looksConstEligible(property)) constEligibleVals += 1
                 }
+            } else if (property.hasModifier(KtTokens.LATEINIT_KEYWORD)) {
+                lateinitVars += 1
             }
             super.visitProperty(property)
         }

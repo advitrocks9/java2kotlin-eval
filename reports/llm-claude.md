@@ -1,7 +1,7 @@
 # J2K eval report
 
 - corpus: `fixtures/llm-claude-converted`
-- generated: 2026-05-03T13:08:15.021619Z
+- generated: 2026-05-04T19:38:44.098064Z
 - files: 15
 - kotlinc pass rate: 100.0% (15/15)
 
@@ -9,21 +9,21 @@
 
 | file | ok | errs | ms |
 |------|----|------|----|
-| `01_anonymous_runnable.kt` | yes | 0 | 182 |
-| `02_static_final_constants.kt` | yes | 0 | 182 |
-| `03_nullability_no_annotation.kt` | yes | 0 | 182 |
-| `04_varargs_to_array.kt` | yes | 0 | 182 |
-| `05_generic_wildcard.kt` | yes | 0 | 182 |
-| `06_instanceof_pattern.kt` | yes | 0 | 182 |
-| `07_try_with_resources.kt` | yes | 0 | 182 |
-| `08_static_utility_class.kt` | yes | 0 | 182 |
-| `09_enum_with_body.kt` | yes | 0 | 182 |
-| `10_default_interface.kt` | yes | 0 | 182 |
-| `11_inner_class_outer_ref.kt` | yes | 0 | 182 |
-| `12_overloaded_default_args.kt` | yes | 0 | 182 |
-| `13_checked_exception.kt` | yes | 0 | 182 |
-| `14_builder_chained.kt` | yes | 0 | 182 |
-| `15_array_creation.kt` | yes | 0 | 182 |
+| `01_anonymous_runnable.kt` | yes | 0 | 339 |
+| `02_static_final_constants.kt` | yes | 0 | 339 |
+| `03_nullability_no_annotation.kt` | yes | 0 | 339 |
+| `04_varargs_to_array.kt` | yes | 0 | 339 |
+| `05_generic_wildcard.kt` | yes | 0 | 339 |
+| `06_instanceof_pattern.kt` | yes | 0 | 339 |
+| `07_try_with_resources.kt` | yes | 0 | 339 |
+| `08_static_utility_class.kt` | yes | 0 | 339 |
+| `09_enum_with_body.kt` | yes | 0 | 339 |
+| `10_default_interface.kt` | yes | 0 | 339 |
+| `11_inner_class_outer_ref.kt` | yes | 0 | 339 |
+| `12_overloaded_default_args.kt` | yes | 0 | 339 |
+| `13_checked_exception.kt` | yes | 0 | 339 |
+| `14_builder_chained.kt` | yes | 0 | 339 |
+| `15_array_creation.kt` | yes | 0 | 339 |
 
 ## Structural metrics (aggregate)
 
@@ -40,6 +40,7 @@
 | `inner class` declarations | 2 |
 | `vararg` params | 1 |
 | `.use {}` resource blocks | 3 |
+| `lateinit var` declarations | 0 |
 
 ## Structural metrics (PSI -- KotlinCoreEnvironment)
 
@@ -53,6 +54,7 @@
 | const-eligible val | 0 | 0 | 0 |
 | inner class | 2 | 1 | -1 |
 | vararg | 1 | 1 | 0 |
+| lateinit var | 0 | 0 | 0 |
 
 ## Hypothesis checks
 
@@ -72,20 +74,6 @@ Each row tests a single claim about how J2K should handle a Java idiom. Pass rat
 | `08_static_utility_class.kt` | not_companion_for_pure_utility | yes | LLM does NOT add a companion wrapper for the pure-function case | `` |
 | `12_overloaded_default_args.kt` | overloads_kept_separate | yes | LLM kept 1-arg overload as a separate fun (no default-arg collapse) | `fun render(s: String): String` |
 | `12_overloaded_default_args.kt` | three_overloads_present | yes | full 3-arg render still present | `fun render(s: String, prefix: String, upper: Boolean)` |
-
-## Java -> Kotlin recall
-
-Pairs each `.kt` with its source `.java` (when one exists, 15/15 files here) and counts the same syntactic categories on both sides. Ratio < 1 means J2K dropped occurrences; ratio > 1 means one Java idiom expands into multiple Kotlin ones (e.g. one `try-with-resources` with N resources nests N `.use {}` blocks). The expression-RHS row reports input-side count only, since `const val` on the Kotlin side covers literal AND expression initializers; treat it as a signal of how many candidates the literal-only row is missing.
-
-| category | java | kotlin | ratio |
-|----------|------|--------|-------|
-| try-with-resources -> .use{} | 3 | 3 | 1.00 |
-| anonymous classes -> object literals | 1 | 0 | 0.00 |
-| static final w/ literal RHS -> const val | 4 | 5 | 1.25 |
-| static final w/ const-expression RHS (informational) | 1 | - | - |
-| varargs -> vararg params | 1 | 1 | 1.00 |
-| inner class -> inner class | 1 | 2 | 2.00 |
-| single-abstract-method iface -> fun interface | 1 | 0 | 0.00 |
 
 ## Baseline diff
 
